@@ -67,8 +67,7 @@ driver_manager() ->
 		    scheduler:schedule_order(global:whereis_name(scheduler), Floor, Direction);
 		_Else ->
 		    do_nothing
-	    end,
-	    fsm:event_new_order(fsm); % this should probably not be here. Guess queue should have some callback?
+	    end;
 	{floor_reached, Floor} ->
 	    fsm:event_floor_reached(fsm),
 	    queue:floor_reached(queue, Floor)
@@ -90,7 +89,8 @@ scheduler_manager() ->
     {Floor, Direction, Status} = scheduler:request_order(global:whereis_name(scheduler), CostCalculationFunction),
     case Status of
 	won ->
-	    queue:add(queue, Floor, Direction);
+	    queue:add(queue, Floor, Direction),
+	    fsm:event_new_order(fsm);	
 	lost ->
 	    queue:remove(queue, Floor, Direction)
     end,
