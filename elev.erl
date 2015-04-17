@@ -7,7 +7,8 @@
 
 
 start(ElevatorType) ->
-    order_db:install([node()]),
+    connection_manager:start_auto_discovery(),
+    order_db:install(),
 
     DriverManagerPID = spawn(fun() -> driver_manager_init() end),
     FsmManagerPid = spawn(fun() -> fsm_manager_init() end),

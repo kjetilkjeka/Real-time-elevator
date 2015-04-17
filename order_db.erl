@@ -6,15 +6,16 @@
 %% DB interface
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-install(Nodes) ->
-    mnesia:create_schema(Nodes),
-    rpc:multicall(Nodes, application, start, [mnesia]),
+install() ->
+    rpc:multicall(mnesia, stop, []), % this is ugly hack, clean mnesia every time a node connects
+    rpc:multicall(mnesia, start, []),
     mnesia:create_table(orders, [
 				 {record_name, order},
 				 {attributes, record_info(fields, order)},
-				 {ram_copies, Nodes},
+				 {ram_copies, [node()|nodes()]},
 				 {type, bag}
 				]).
+
 
 
 add_order(Floor, Direction) ->
