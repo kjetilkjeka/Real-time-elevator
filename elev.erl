@@ -7,7 +7,7 @@
 
 
 start(ElevatorType) ->
-    order_db:install([node()]),
+    %order_db:install([node()]), %do manual install instead
 
     DriverManagerPID = spawn(fun() -> driver_manager_init() end),
     FsmManagerPid = spawn(fun() -> fsm_manager_init() end),
