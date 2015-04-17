@@ -7,8 +7,8 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 install() ->
-    rpc:multicall(mnesia, stop, []), % this is ugly hack, clean mnesia every time a node connects
     rpc:multicall(mnesia, start, []),
+    rpc:multicall(mnesia, delete_table, [orders]), % this is ugly hack, clean mnesia every time a node connects
     mnesia:create_table(orders, [
 				 {record_name, order},
 				 {attributes, record_info(fields, order)},
