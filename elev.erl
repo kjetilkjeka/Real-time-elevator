@@ -7,7 +7,14 @@
 
 
 start(ElevatorType) ->
-    %order_db:install([node()]), %do manual install instead
+    %ordier_db:install([node()]), %do manual install instead
+    case global:whereis_name(database_manager) of % this is not thread safe
+	undefined ->
+	    DatabaseManagerPID = spawn(fun() -> database_manager() end),
+	    global:register(database_manager, DatabaseManagerPID);
+	_ ->
+	    ok
+    end,
 
     DriverManagerPID = spawn(fun() -> driver_manager_init() end),
     FsmManagerPid = spawn(fun() -> fsm_manager_init() end),
@@ -28,6 +35,21 @@ start(ElevatorType) ->
     spawn(fun() -> scheduler_manager() end).
 
 		  
+
+
+database_manager() ->
+    order_db:install(node()),
+    database_manager([node()]).
+database_manager(LastNodeList) ->
+    timer:sleep(100),
+    case [node()|nodes()] of
+	LastNodeList ->
+	    database_manager(LastNodeList);
+	NewNodeList ->
+	    AddNodesFunction = fun(Node) -> order_db:add_fresh_node(Node) end,
+	    lists:foreach(AddNodesFunction, NewNodeList),
+	    database_manager(NewNodeList)
+    end.
 
 
 

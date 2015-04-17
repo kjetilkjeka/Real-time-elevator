@@ -6,15 +6,20 @@
 %% DB interface
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-install(Nodes) ->
-    mnesia:create_schema(Nodes),
-    rpc:multicall(Nodes, application, start, [mnesia]),
+install() ->
+    mnesia:start(),
     mnesia:create_table(orders, [
 				 {record_name, order},
 				 {attributes, record_info(fields, order)},
-				 {ram_copies, Nodes},
+				 {ram_copies, [node()]},
 				 {type, bag}
 				]).
+
+add_fresh_node(Node) ->
+    rpc:call(Node, mnesia, start, []),
+    mnesia:change_config(extra_db_nodes, [Node]),
+    mnesia:add_table_copy(orders, Node, ram_copies).
+
 
 
 add_order(Floor, Direction) ->
