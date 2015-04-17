@@ -8,6 +8,8 @@
 
 start(ElevatorType) ->
     connection_manager:start_auto_discovery(),
+
+    timer:sleep(10000), % ugly hack
     order_db:install(),
 
     DriverManagerPID = spawn(fun() -> driver_manager_init() end),
