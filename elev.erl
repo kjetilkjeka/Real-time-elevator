@@ -85,7 +85,7 @@ button_light_manager() ->
 
 
 scheduler_manager() ->
-    CostCalculationFunction = fun(Floor, Direction) -> 0 end, %take all orders
+    CostCalculationFunction = fun(Floor, Direction) -> queue:get_order_cost(queue, Floor, Direction) end,
     {Floor, Direction, Status} = scheduler:request_order(global:whereis_name(scheduler), CostCalculationFunction),
     case Status of
 	won ->
