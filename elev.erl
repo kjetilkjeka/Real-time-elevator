@@ -15,7 +15,7 @@ start(ElevatorType) ->
 	{atomic, ok} -> 
 	    ok;
 	{aborted, _} ->
-	    order_db:install()
+	    order_db:connect()
     end,
     
     DriverManagerPID = spawn(fun() -> driver_manager_init() end),
