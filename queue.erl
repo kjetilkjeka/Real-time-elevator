@@ -55,6 +55,13 @@ make_stop(Pid) ->
 	    ok
     end.
 
+get_order_cost(Pid, Floor, Direction) ->
+    Pid ! {cost_request, Floor, Direction, self()},
+    receive
+	{cost, Cost} ->
+	    Cost
+    end.
+
 get_schedule(Pid) -> %% for debug only
     Pid ! {get_schedule, self()},
     receive
@@ -82,6 +89,13 @@ init(Listener) ->
 
 loop(Schedule) ->
     receive
+	{cost_request, Floor, Direction, Caller} ->
+	    CostWithoutOrder = calculate_schedule_cost(Schedule),
+	    ScheduleWithOrder = add_order_to_schedule(Schedule, #order{floor = Floor, direction = Direction}),
+	    CostWithOrder = calculate_schedule_cost(ScheduleWithOrder),
+	    Cost = CostWithOrder - CostWithoutOrder,
+	    Caller ! {cost, Cost},
+	    loop(Schedule);
 	{make_stop, Caller} ->
 	    NewSchedule = update_schedule_at_stop(Schedule),
 	    Caller ! ok,
