@@ -3,18 +3,30 @@
 
 -record(order, {floor, direction}). % might need something about origin to handle internal orders
 
-%% DB interface
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Mnesia functions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 
-install(Nodes) ->
-    mnesia:create_schema(Nodes),
-    rpc:multicall(Nodes, application, start, [mnesia]),
+install() ->
+    mnesia:start(),
+    create_table().
+
+create_table() ->
     mnesia:create_table(orders, [
 				 {record_name, order},
 				 {attributes, record_info(fields, order)},
-				 {ram_copies, Nodes},
+				 {ram_copies, [node()]},
 				 {type, bag}
 				]).
+
+connect() ->
+    mnesia:start(),
+    mnesia:change_config(extra_db_nodes, nodes()),
+    mnesia:add_table_copy(orders, node(), ram_copies).
+    
+
+
+%% API functions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 add_order(Floor, Direction) ->
