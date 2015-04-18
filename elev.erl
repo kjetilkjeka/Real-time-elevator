@@ -7,8 +7,17 @@
 
 
 start(ElevatorType) ->
-    %order_db:install([node()]), %do manual install instead
-
+    connection_manager:start_auto_discovery(),
+    
+    timer:sleep(5000), %much hack, such ugly
+    
+    case order_db:install() of
+	{atomic, ok} -> 
+	    ok;
+	{aborted, _} ->
+	    order_db:install()
+    end,
+    
     DriverManagerPID = spawn(fun() -> driver_manager_init() end),
     FsmManagerPid = spawn(fun() -> fsm_manager_init() end),
 
