@@ -135,7 +135,12 @@ calculate_schedule_cost(Schedule) when Schedule#schedule.orders == [] -> % corre
 calculate_schedule_cost(Schedule) ->
     {OrderCost, CheapestOrder} = get_cheapest_order_from_schedule(Schedule),
     NewOrderList = lists:delete(CheapestOrder, Schedule#schedule.orders),
-    NewDirection = CheapestOrder#order.direction,
+    OrderDirection = CheapestOrder#order.direction,
+    NewDirection = case OrderDirection of
+		       up -> up;
+		       down -> down;
+		       command -> Schedule#schedule.elevator_direction
+		   end,
     NewNextFloor = CheapestOrder#order.floor,
     NewSchedule = Schedule#schedule{orders=NewOrderList, elevator_direction=NewDirection, elevator_next_floor = NewNextFloor}, 
     OrderCost + calculate_schedule_cost(NewSchedule).
