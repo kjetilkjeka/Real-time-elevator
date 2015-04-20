@@ -7,10 +7,18 @@
 %%%%%%%%%%
 
 add_order(Pid, Floor, Direction) ->
-    Pid ! {add_order, Floor, Direction, self()}.
+    Pid ! {add_order, Floor, Direction, self()},
+    receive ok ->
+	    ok
+    end.
+
 
 remove_order(Pid, Floor, Direction) ->
-    Pid ! {remove_order, Floor, Direction, self()}.
+    Pid ! {remove_order, Floor, Direction, self()},
+    receive ok ->
+	    ok
+    end.
+
 
 is_order(Pid, Floor, Direction) ->
     Pid ! {is_order, Floor, Direction, self()},
@@ -40,11 +48,13 @@ loop(OrderSet) -> % should maybe make a map?
 	    Response = is_order_in_set(OrderSet, #order{floor=Floor, direction=Direction}),
 	    Caller ! {is_order, Floor, Direction, Response},
 	    loop(OrderSet);
-	{remove_order, Floor, Direction, _Caller} ->
+	{remove_order, Floor, Direction, Caller} ->
 	    NewOrderSet = remove_order_from_set(OrderSet, #order{floor=Floor, direction=Direction}),
+	    Caller ! ok, % bad protocol?
 	    loop(NewOrderSet);
 	{add_order, Floor, Direction, Caller} ->
 	    NewOrderSet = add_order_to_set(OrderSet, #order{floor=Floor, direction=Direction}),
+	    Caller ! ok, %bad protocol?
 	    loop(NewOrderSet);
 	{get_order_set, Caller} ->
 	    Caller ! {order_set, OrderSet},
