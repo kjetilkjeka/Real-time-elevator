@@ -101,15 +101,20 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 %% functions for scheduling order
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-schedule_order(Floor, Direction) ->
+% many io:formats here for debugging, consider removing at the end.
+schedule_order(Floor, Direction) -> % may cause deadlock if members change between calls
+    io:format("Order auction started~n", []),
     Self = self(),
     RequestBidFunction = fun(Member) ->
 				 Member ! {request_bid, Floor, Direction, Self}
 			 end,
     foreach_distributer(RequestBidFunction),
     AllMembers = pg2:get_members(?PROCESS_GROUP_NAME),
+    io:format("Members are ~w ~n", [AllMembers]),
     Bids = receive_bids(AllMembers),
+    io:format("Bids are ~w ~n", [Bids]),
     {_LeastBid, WinningMember} = lists:min(Bids),
+    io:format("Winning member is ~w ~n", [WinningMember]),
     WinningMember.
 
 
