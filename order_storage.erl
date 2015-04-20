@@ -12,6 +12,12 @@ add_order(Pid, Floor, Direction) ->
 remove_order(Pid, Floor, Direction) ->
     Pid ! {remove_order, Floor, Direction, self()}.
 
+is_order(Pid, Floor, Direction) ->
+    Pid ! {is_order, Floor, Direction, self()},
+    receive
+	{is_order, Floor, Direction, Response} ->
+	    Response
+    end.
 
 get_order_set(Pid) -> %function for debug only
     Pid ! {get_order_set, self()},
@@ -30,6 +36,10 @@ start() ->
 
 loop(OrderSet) -> % should maybe make a map?
     receive
+	{is_order, Floor, Direction, Caller} ->
+	    Response = is_order_in_set(OrderSet, #order{floor=Floor, direction=Direction}),
+	    Caller ! {is_order, Floor, Direction, Response},
+	    loop(OrderSet);
 	{remove_order, Floor, Direction, _Caller} ->
 	    NewOrderSet = remove_order_from_set(OrderSet, #order{floor=Floor, direction=Direction}),
 	    loop(NewOrderSet);
@@ -51,3 +61,6 @@ add_order_to_set(OrderSet, Order) ->
 
 remove_order_from_set(OrderSet, Order) ->
     sets:del_element(Order, OrderSet).
+
+is_order_in_set(OrderSet, Order) ->
+    sets:is_element(Order, OrderSet).
