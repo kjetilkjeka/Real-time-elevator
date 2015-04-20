@@ -24,8 +24,9 @@ remove_order(Floor, Direction) ->
     foreach_distributer(AddOrderFunction).
 
 
-is_order(Pid, Floor, Direction) ->
-    Pid ! {is_order, Floor, Direction, self()},
+is_order(Floor, Direction) ->
+    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME),
+    ClosestDistributer ! {is_order, Floor, Direction, self()},
     receive
 	{is_order, Floor, Direction, Response} ->
 	    Response
