@@ -5,30 +5,34 @@
 
 -define(PROCESS_GROUP_NAME, order_distributers).
 
+% this should maybe be done with dict so it can map from order to handler
 
 %% API
 %%%%%%%%%%
 
 add_order(Floor, Direction) ->
     Self = self(),
+    Order = #order{floor=Floor, direction=Direction},
     AddOrderFunction = fun(OrderDistributorPid) ->
-			       OrderDistributorPid ! {add_order, Floor, Direction, Self}
+			       OrderDistributorPid ! {add_order, Order, Self}
 		       end,
     foreach_distributer(AddOrderFunction).
 
 remove_order(Floor, Direction) ->
     Self = self(),
+    Order = #order{floor=Floor, direction=Direction},
     AddOrderFunction = fun(OrderDistributorPid) ->
-			       OrderDistributorPid ! {remove_order, Floor, Direction, Self}
+			       OrderDistributorPid ! {remove_order, Order, Self}
 		       end,
     foreach_distributer(AddOrderFunction).
 
 
 is_order(Floor, Direction) ->
+    Order = #order{floor=Floor, direction=Direction},
     ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME),
-    ClosestDistributer ! {is_order, Floor, Direction, self()},
+    ClosestDistributer ! {is_order, Order, self()},
     receive
-	{is_order, Floor, Direction, Response} ->
+	{is_order, Order, Response} ->
 	    Response
     end.
 
@@ -69,17 +73,15 @@ loop(OrderSet) -> % should maybe make a map?
 	    Price = request_bid(Floor, Direction),
 	    Caller ! {bid_price, Price, self()},
 	    loop(OrderSet);						       
-	{is_order, Floor, Direction, Caller} ->
-	    Response = is_order_in_set(OrderSet, #order{floor=Floor, direction=Direction}),
-	    Caller ! {is_order, Floor, Direction, Response},
+	{is_order, Order, Caller} ->
+	    Response = is_order_in_set(OrderSet, Order),
+	    Caller ! {is_order, Order, Response},
 	    loop(OrderSet);
-	{remove_order, Floor, Direction, _Caller} ->
-	    NewOrderSet = remove_order_from_set(OrderSet, #order{floor=Floor, direction=Direction}),
-	    %Caller ! ok, % bad protocol?
+	{remove_order, Order, _Caller} ->
+	    NewOrderSet = remove_order_from_set(OrderSet, Order),
 	    loop(NewOrderSet);
-	{add_order, Floor, Direction, _Caller} ->
-	    NewOrderSet = add_order_to_set(OrderSet, #order{floor=Floor, direction=Direction}),
-	    %Caller ! ok, %bad protocol?
+	{add_order, Order, _Caller} ->
+	    NewOrderSet = add_order_to_set(OrderSet, Order),
 	    loop(NewOrderSet);
 	{get_order_set, Caller} ->
 	    Caller ! {order_set, OrderSet},
