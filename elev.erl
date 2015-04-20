@@ -9,7 +9,8 @@
 start(ElevatorType) ->
     connection_manager:start_auto_discovery(),
     
-    OrderStoragePID = order_storage:start(),
+    OrderStorageManagerPID = spawn(fun() -> order_storage_manager() end),
+    OrderStoragePID = order_storage:start(OrderStorageManagerPID),
     register(order_storage, OrderStoragePID),
     
     DriverManagerPID = spawn(fun() -> driver_manager_init() end),
@@ -23,12 +24,9 @@ start(ElevatorType) ->
     
     QueueManagerPID = spawn(fun() -> queue_manager() end),
     QueuePID = queue:start(QueueManagerPID),
-    register(queue, QueuePID),
+    register(queue, QueuePID).
     
-    SchedulerPID = scheduler:start(),
-    global:register_name(scheduler, SchedulerPID),
     
-    spawn(fun() -> scheduler_manager() end).
 
 
 
@@ -65,8 +63,7 @@ driver_manager_init() -> % more dirty tricks
 driver_manager() ->
     receive
 	{new_order, Direction, Floor} ->
-	    order_storage:add_order(Floor, Direction),
-	    scheduler:schedule_order(global:whereis_name(scheduler), Floor, Direction); % this schedule event can block floor_reached
+	    order_storage:add_order(Floor, Direction);  % this schedule event can block floor_reached
 	{floor_reached, Floor} ->
 	    fsm:event_floor_reached(fsm),
 	    queue:floor_reached(queue, Floor)
@@ -83,17 +80,16 @@ button_light_manager() ->
     button_light_manager().
 
 
-scheduler_manager() ->
-    CostCalculationFunction = fun(Floor, Direction) -> queue:get_order_cost(queue, Floor, Direction) end,
-    {Floor, Direction, Status} = scheduler:request_order(global:whereis_name(scheduler), CostCalculationFunction),
-    case Status of
-	won ->
+order_storage_manager() ->    
+    receive
+	{bid_request, Floor, Direction, Caller} ->
+	    Caller ! {bid_price, queue:get_order_cost(queue, Floor, Direction)};
+	{handle_order, Floor, Direction, _Caller} ->
 	    queue:add(queue, Floor, Direction),
-	    fsm:event_new_order(fsm);	
-	lost ->
-	    queue:remove(queue, Floor, Direction)
+	    fsm:event_new_order(fsm) % maybe queue should do this?
     end,
-    scheduler_manager().
+    
+    order_storage_manager().
 
 queue_manager() ->			    
     receive

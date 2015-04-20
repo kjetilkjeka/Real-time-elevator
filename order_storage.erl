@@ -1,4 +1,4 @@
--module(order_storage). %change to order_distributer or maybe scheduler?
+-module(order_storage). %change to order_distributer or maybe scheduler?, Believe distributer is better than scheduler
 -compile(export_all).
 
 -record(order, {floor, direction}).
@@ -11,10 +11,11 @@
 %%%%%%%%%%
 
 add_order(Floor, Direction) ->
+    BidWinner = schedule_order(Floor, Direction), % should maybe happend isolated from caller ? it might deadlock ? maybe it's better crash the caller as well?
     Self = self(),
     Order = #order{floor=Floor, direction=Direction},
     AddOrderFunction = fun(OrderDistributorPid) ->
-			       OrderDistributorPid ! {add_order, Order, Self}
+			       OrderDistributorPid ! {add_order, Order, BidWinner, Self}
 		       end,
     foreach_distributer(AddOrderFunction).
 
@@ -54,6 +55,8 @@ request_bid(Floor, Direction) ->
 	    Price
     end.
 
+handle_order(Order) -> % the world might have seen better names than handle_order
+    get(listener) ! {handle_order, Order#order.floor, Order#order.direction, self()}.
 
 %% process functions
 %%%%%%%%%%%%%%%
@@ -80,8 +83,14 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 	{remove_order, Order, _Caller} ->
 	    NewOrders = remove_from_orders(Orders, Order),
 	    loop(NewOrders);
-	{add_order, Order, Caller} ->
-	    NewOrders = add_to_orders(Orders, Order, Caller),
+	{add_order, Order, Handler, _Caller} ->
+	    NewOrders = add_to_orders(Orders, Order, Handler),
+	    case Handler == self() of
+		true ->
+		    handle_order(Order);
+		false ->
+		    do_nothing
+	    end,
 	    loop(NewOrders);
 	{get_orders, Caller} -> % for debug only
 	    Caller ! {orders, Orders},
