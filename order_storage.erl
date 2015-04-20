@@ -1,16 +1,21 @@
--module(order_storage).
+-module(order_storage). %change to order_distributer or maybe scheduler?
 -compile(export_all).
 
 -record(order, {floor, direction}).
 
+-define(PROCESS_GROUP_NAME, order_distributers).
+
+
 %% API
 %%%%%%%%%%
 
-add_order(Pid, Floor, Direction) ->
-    Pid ! {add_order, Floor, Direction, self()},
-    receive ok ->
-	    ok
-    end.
+add_order(Floor, Direction) ->
+    Self = self(),
+    AddOrderFunction = fun(OrderDistributorPid) ->
+			       OrderDistributorPid ! {add_order, Floor, Direction, Self}
+		       end,
+    foreach_distributer(AddOrderFunction).
+
 
 
 remove_order(Pid, Floor, Direction) ->
@@ -40,7 +45,11 @@ get_order_set(Pid) -> %function for debug only
 
 
 start() ->
-    spawn(fun() -> loop(sets:new()) end).
+    spawn(fun() -> init() end).
+
+init() ->
+    join_process_group(),
+    loop(sets:new()).
 
 loop(OrderSet) -> % should maybe make a map?
     receive
@@ -74,3 +83,17 @@ remove_order_from_set(OrderSet, Order) ->
 
 is_order_in_set(OrderSet, Order) ->
     sets:is_element(Order, OrderSet).
+
+
+%% Communication/Synchronization procedures
+%%%%%%%%%%%%%%%%%%%
+
+join_process_group() -> % need maybe better name?
+    pg2:create(?PROCESS_GROUP_NAME),
+    pg2:join(?PROCESS_GROUP_NAME, self()).
+
+%F(OrderDistributor)
+foreach_distributer(Function) ->
+    OrderDistributers = pg2:get_members(?PROCESS_GROUP_NAME),
+    lists:foreach(Function, OrderDistributers).
+
