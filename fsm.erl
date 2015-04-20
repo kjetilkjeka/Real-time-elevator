@@ -18,6 +18,7 @@ motor_down(Listener) -> Listener ! {motor, down}.
 motor_stop(Listener) -> Listener ! {motor, stop}.
 open_doors(Listener) -> Listener ! {doors, open}.
 close_doors(Listener) -> Listener ! {doors, close}.
+init_completed(Listener) -> Listener ! {init, completed}.
 
 request_new_direction(Listener) -> 
     Listener ! {direction, request, self()},
@@ -42,6 +43,7 @@ state_init(Listener) ->
     motor_up(Listener),
     receive
 	floor_reached ->
+	    init_completed(Listener),
 	    state_idle(Listener)
     end.
 
