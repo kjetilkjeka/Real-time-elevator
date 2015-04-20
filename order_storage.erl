@@ -36,11 +36,11 @@ is_order(Floor, Direction) ->
 	    Response
     end.
 
-get_order_set(Pid) -> %function for debug only
-    Pid ! {get_order_set, self()},
+get_orders(Pid) -> %function for debug only
+    Pid ! {get_orders, self()},
     receive
-	{order_set, OrderList} ->
-	    OrderList
+	{orders, Orders} ->
+	    Orders
     end.
 
 
@@ -65,27 +65,27 @@ start(Listener) ->
 init(Listener) ->
     put(listener, Listener),
     join_process_group(),
-    loop(sets:new()).
+    loop(dict:new()).
 
-loop(OrderSet) -> % should maybe make a map?
+loop(Orders) -> % OrderMap maps orders to something descriptive
     receive
 	{request_bid, Floor, Direction, Caller} ->
 	    Price = request_bid(Floor, Direction),
 	    Caller ! {bid_price, Price, self()},
-	    loop(OrderSet);						       
+	    loop(Orders);						       
 	{is_order, Order, Caller} ->
-	    Response = is_order_in_set(OrderSet, Order),
+	    Response = is_in_orders(Orders, Order),
 	    Caller ! {is_order, Order, Response},
-	    loop(OrderSet);
+	    loop(Orders);
 	{remove_order, Order, _Caller} ->
-	    NewOrderSet = remove_order_from_set(OrderSet, Order),
-	    loop(NewOrderSet);
-	{add_order, Order, _Caller} ->
-	    NewOrderSet = add_order_to_set(OrderSet, Order),
-	    loop(NewOrderSet);
-	{get_order_set, Caller} ->
-	    Caller ! {order_set, OrderSet},
-	    loop(OrderSet)
+	    NewOrders = remove_from_orders(Orders, Order),
+	    loop(NewOrders);
+	{add_order, Order, Caller} ->
+	    NewOrders = add_to_orders(Orders, Order, Caller),
+	    loop(NewOrders);
+	{get_orders, Caller} -> % for debug only
+	    Caller ! {orders, Orders},
+	    loop(Orders)
     end.
     
 
@@ -113,19 +113,12 @@ receive_bids(MembersNotCommited) ->
     end.
 
 
-    
-
-%% Module functions, (in lack of better name)
+%% Functions encapsulating what datatype Orders realy is
 %%%%%%%%%%%%%%%%
 
-add_order_to_set(OrderSet, Order) ->
-    sets:add_element(Order, OrderSet).
-
-remove_order_from_set(OrderSet, Order) ->
-    sets:del_element(Order, OrderSet).
-
-is_order_in_set(OrderSet, Order) ->
-    sets:is_element(Order, OrderSet).
+add_to_orders(Orders, Order, Handler) -> dict:append(Order, Handler, Orders).
+remove_from_orders(Orders, Order) -> dict:erase(Order, Orders).
+is_in_orders(Orders, Order) -> dict:is_key(Order, Orders).
 
 
 %% Communication/Synchronization procedures
@@ -139,4 +132,3 @@ join_process_group() -> % need maybe better name?
 foreach_distributer(Function) -> % maybe foreach_member
     OrderDistributers = pg2:get_members(?PROCESS_GROUP_NAME),
     lists:foreach(Function, OrderDistributers).
-
