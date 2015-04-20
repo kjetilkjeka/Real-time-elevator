@@ -40,19 +40,35 @@ get_order_set(Pid) -> %function for debug only
     end.
 
 
+%% Callbacks
+%%%%%%%%%%%
+
+request_bid(Floor, Direction) ->
+    get(listener) ! {bid_request, Floor, Direction, self()},
+    receive 
+	{bid_price, Price} ->
+	    Price
+    end.
+
+
 %% process functions
 %%%%%%%%%%%%%%%
 
 
-start() ->
-    spawn(fun() -> init() end).
+start(Listener) ->
+    spawn(fun() -> init(Listener) end).
 
-init() ->
+init(Listener) ->
+    put(listener, Listener),
     join_process_group(),
     loop(sets:new()).
 
 loop(OrderSet) -> % should maybe make a map?
     receive
+	{request_bid, Floor, Direction, Caller} ->
+	    Price = request_bid(Floor, Direction),
+	    Caller ! {bid_price, Price, self()},
+	    loop(OrderSet);						       
 	{is_order, Floor, Direction, Caller} ->
 	    Response = is_order_in_set(OrderSet, #order{floor=Floor, direction=Direction}),
 	    Caller ! {is_order, Floor, Direction, Response},
@@ -70,7 +86,32 @@ loop(OrderSet) -> % should maybe make a map?
 	    loop(OrderSet)
     end.
     
-		   
+
+%% functions for scheduling order
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+schedule_order(Floor, Direction) ->
+    Self = self(),
+    RequestBidFunction = fun(Member) ->
+				 Member ! {request_bid, Floor, Direction, Self}
+			 end,
+    foreach_distributer(RequestBidFunction),
+    AllMembers = pg2:get_members(?PROCESS_GROUP_NAME),
+    Bids = receive_bids(AllMembers),
+    {_LeastBid, WinningMember} = lists:min(Bids),
+    WinningMember.
+
+
+receive_bids([]) ->
+    [];
+receive_bids(MembersNotCommited) ->
+    receive 
+	{bid_price, Price, Handler} ->
+	    [{Price, Handler}|receive_bids(lists:delete(Handler, MembersNotCommited))]
+    end.
+
+
+    
 
 %% Module functions, (in lack of better name)
 %%%%%%%%%%%%%%%%
@@ -93,7 +134,7 @@ join_process_group() -> % need maybe better name?
     pg2:join(?PROCESS_GROUP_NAME, self()).
 
 %F(OrderDistributor)
-foreach_distributer(Function) ->
+foreach_distributer(Function) -> % maybe foreach_member
     OrderDistributers = pg2:get_members(?PROCESS_GROUP_NAME),
     lists:foreach(Function, OrderDistributers).
 
