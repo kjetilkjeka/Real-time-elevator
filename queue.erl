@@ -157,22 +157,30 @@ update_schedule_at_stop(Schedule) -> % and update direction, realy hard function
     ElevatorFloor = Schedule#schedule.elevator_next_floor,
     ScheduleWithoutCommand = remove_order_from_schedule(Schedule, #order{floor = ElevatorFloor, direction = command}),
     
-    if 
-	ScheduleWithoutCommand#schedule.orders == [] ->
-	    ScheduleWithoutCommand#schedule{elevator_direction = stop};	
-	ScheduleWithoutCommand#schedule.orders /= [] ->
-	    {_LeastCost, CheapestOrder} = get_cheapest_order_from_schedule(ScheduleWithoutCommand),
-	    io:format("ElevatorFloor: ~w, CheaestFloor: ~w ~n", [ElevatorFloor, CheapestOrder#order.floor]),
-	    if  % see if this can be solved more elegantely, (without nested ifs)
-		ElevatorFloor /= CheapestOrder#order.floor ->
-		    ScheduleWithoutCommand;
-		ElevatorFloor == CheapestOrder#order.floor ->
-		    CheapestDirection = CheapestOrder#order.direction,
-		    ScheduleWithoutCommandAndCheapestDirection = remove_order_from_schedule(ScheduleWithoutCommand, #order{floor = ElevatorFloor, direction = CheapestDirection}), %find better name
-		    ScheduleWithoutCommandAndCheapestDirection#schedule{elevator_direction = CheapestDirection}
-	    end
-    end.		    
+    NewSchedule = if 
+		      ScheduleWithoutCommand#schedule.orders == [] ->
+			  ScheduleWithoutCommand#schedule{elevator_direction = stop};	
+		      ScheduleWithoutCommand#schedule.orders /= [] ->
+			  {_LeastCost, CheapestOrder} = get_cheapest_order_from_schedule(ScheduleWithoutCommand),
+			  io:format("ElevatorFloor: ~w, CheaestFloor: ~w ~n", [ElevatorFloor, CheapestOrder#order.floor]),
+			  if  % see if this can be solved more elegantely, (without nested ifs)
+			      ElevatorFloor /= CheapestOrder#order.floor ->
+				  ScheduleWithoutCommand;
+			      ElevatorFloor == CheapestOrder#order.floor ->
+				  CheapestDirection = CheapestOrder#order.direction,
+				  ScheduleWithoutCommandAndCheapestDirection = remove_order_from_schedule(ScheduleWithoutCommand, #order{floor = ElevatorFloor, direction = CheapestDirection}), %find better name
+				  ScheduleWithoutCommandAndCheapestDirection#schedule{elevator_direction = CheapestDirection}
+			  end
+		  end,		    
     
+    
+    case NewSchedule#schedule.orders of
+	[] ->
+	    NewSchedule#schedule{elevator_direction=stop};
+	_OrderList ->
+	    NewSchedule
+    end.
+
     
 
 
