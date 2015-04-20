@@ -65,7 +65,7 @@ driver_manager_init() -> % more dirty tricks
 driver_manager() ->
     receive
 	{new_order, Direction, Floor} ->
-	    order_storage:add_order(order_storage, Floor, Direction),
+	    order_storage:add_order(Floor, Direction),
 	    scheduler:schedule_order(global:whereis_name(scheduler), Floor, Direction); % this schedule event can block floor_reached
 	{floor_reached, Floor} ->
 	    fsm:event_floor_reached(fsm),
@@ -75,7 +75,7 @@ driver_manager() ->
 
 button_light_manager() ->
     SetLightFunction = fun(Floor, Direction) ->
-			       elev_driver:set_button_lamp(Floor, Direction, order_storage:is_order(order_storage, Floor, Direction)) % hard line to grasp
+			       elev_driver:set_button_lamp(Floor, Direction, order_storage:is_order(Floor, Direction)) % hard line to grasp
 		       end,	 
     
     foreach_button(SetLightFunction),
@@ -98,7 +98,7 @@ scheduler_manager() ->
 queue_manager() ->			    
     receive
 	{order_served, Floor, Direction} ->
-	    order_storage:remove_order(order_storage, Floor, Direction)
+	    order_storage:remove_order(Floor, Direction)
     end,
     queue_manager().
 
