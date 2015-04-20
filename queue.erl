@@ -98,6 +98,7 @@ loop(Schedule) ->
 	    loop(Schedule);
 	{make_stop, Caller} ->
 	    NewSchedule = update_schedule_at_stop(Schedule),
+	    serve_orders(NewSchedule, Schedule),
 	    Caller ! ok,
 	    loop(NewSchedule);
 	{get_schedule, Caller} -> %% for debug only
@@ -129,6 +130,10 @@ loop(Schedule) ->
 %% functions for process to call
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+serve_orders(NewSchedule, OldSchedule) ->
+    RemovedOrders = lists:subtract(OldSchedule#schedule.orders, NewSchedule#schedule.orders),
+    ServeOrderFunction = fun(Order) -> order_served(Order#order.floor, Order#order.direction) end,
+    lists:foreach(ServeOrderFunction, RemovedOrders).
 
 calculate_schedule_cost(Schedule) when Schedule#schedule.orders == [] -> % correct under the assumption that order cost is linear
     0;
@@ -149,25 +154,25 @@ calculate_schedule_cost(Schedule) ->
 
 % Removes all orders at floor, should possibly be extended to be more precice
 update_schedule_at_stop(Schedule) -> % and update direction, realy hard function to grasp, that's not good
-    ElevatorNextFloor = Schedule#schedule.elevator_next_floor,
-    SameDirection = Schedule#schedule.elevator_direction,
-    OtherDirection = other_direction(SameDirection),
-
-    %% calling something FunSchedule is probably not my brightest moment. Think it's better than Schedule which already is in Head though.
-    RemoveCommandOrder = fun(FunSchedule) ->
-				 remove_order_from_schedule(FunSchedule, #order{floor = ElevatorNextFloor, direction = command})
-			 end,
-    RemoveSameDirectionOrder = fun(FunSchedule) ->
-				       remove_order_from_schedule(FunSchedule, #order{floor = ElevatorNextFloor, direction = SameDirection})
-			       end,
-    RemoveOtherDirectionOrder = fun(FunSchedule) ->
-					remove_order_from_schedule(FunSchedule, #order{floor = ElevatorNextFloor, direction = OtherDirection})
-				end,
-
-    order_served(ElevatorNextFloor, command),
-    order_served(ElevatorNextFloor, SameDirection),
-    order_served(ElevatorNextFloor, OtherDirection),
-    _NewSchedule = RemoveOtherDirectionOrder(RemoveCommandOrder(RemoveSameDirectionOrder(Schedule))).
+    ElevatorFloor = Schedule#schedule.elevator_next_floor,
+    ScheduleWithoutCommand = remove_order_from_schedule(Schedule, #order{floor = ElevatorFloor, direction = command}),
+    
+    if 
+	ScheduleWithoutCommand#schedule.orders == [] ->
+	    ScheduleWithoutCommand#schedule{elevator_direction = stop};	
+	ScheduleWithoutCommand#schedule.orders /= [] ->
+	    {_LeastCost, CheapestOrder} = get_cheapest_order_from_schedule(ScheduleWithoutCommand),
+	    io:format("ElevatorFloor: ~w, CheaestFloor: ~w ~n", [ElevatorFloor, CheapestOrder#order.floor]),
+	    if  % see if this can be solved more elegantely, (without nested ifs)
+		ElevatorFloor /= CheapestOrder#order.floor ->
+		    ScheduleWithoutCommand;
+		ElevatorFloor == CheapestOrder#order.floor ->
+		    CheapestDirection = CheapestOrder#order.direction,
+		    ScheduleWithoutCommandAndCheapestDirection = remove_order_from_schedule(ScheduleWithoutCommand, #order{floor = ElevatorFloor, direction = CheapestDirection}), %find better name
+		    ScheduleWithoutCommandAndCheapestDirection#schedule{elevator_direction = CheapestDirection}
+	    end
+    end.		    
+    
     
 
 
@@ -208,7 +213,7 @@ get_next_direction_from_schedule(Schedule) ->
     end.
 
 
-	
+% what happend if orderLIst is empy?	
 get_cheapest_order_from_schedule(Schedule) -> % maybe degrade to helper, maybe take orderlist and return order? Maybe do this in cost module?
     IncludeCostInListFunction = fun(Order) ->
 					{get_cost(Schedule#schedule.elevator_next_floor, 
@@ -217,7 +222,7 @@ get_cheapest_order_from_schedule(Schedule) -> % maybe degrade to helper, maybe t
 						  Order#order.direction), Order}
 				end,
     CostOrderList = foreach_order(IncludeCostInListFunction, Schedule#schedule.orders),
-    {_LeastCost, _CheapestOrder} = lists:min(CostOrderList).
+    {_LeastCost, _CheapestOrder} = lists:min(CostOrderList). %%%%%%%%% THIS IS REALY TERRIBLE, RETURN VALUE DOESN'T CORRESPOND TO FUNCTION NAME FIX !!!!!!!!!!!!!!!!!!!!!!!!!
 
 
 
@@ -236,6 +241,7 @@ direction(ElevatorFloor, OrderFloor) when ElevatorFloor > OrderFloor ->
     down.
 
 %must_turn(EleveatorNextFloor, ElevatorDirection, OrderFloor, OrderDirection)
+must_turn(_ElevatorNextFloor, stop, _OrderFloor, _OrderDirection) -> false;
 must_turn(ElevatorNextFloor, up, OrderFloor, up) when OrderFloor >= ElevatorNextFloor -> false;
 must_turn(ElevatorNextFloor, up, OrderFloor, up) when OrderFloor < ElevatorNextFloor -> true;
 must_turn(ElevatorNextFloor, down, OrderFloor, down) when OrderFloor =< ElevatorNextFloor -> false;
