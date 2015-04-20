@@ -9,14 +9,8 @@
 start(ElevatorType) ->
     connection_manager:start_auto_discovery(),
     
-    timer:sleep(5000), %much hack, such ugly
-    
-    case order_db:install() of
-	{atomic, ok} -> 
-	    ok;
-	{aborted, _} ->
-	    order_db:connect()
-    end,
+    OrderStoragePID = order_storage:start(),
+    register(order_storage, OrderStoragePID),
     
     DriverManagerPID = spawn(fun() -> driver_manager_init() end),
     FsmManagerPid = spawn(fun() -> fsm_manager_init() end),
@@ -24,9 +18,9 @@ start(ElevatorType) ->
     elev_driver:start(DriverManagerPID, ElevatorType),
     FsmPID = fsm:start(FsmManagerPid),
     register(fsm, FsmPID),
-
+    
     spawn(fun() -> button_light_manager() end),
-
+    
     QueueManagerPID = spawn(fun() -> queue_manager() end),
     QueuePID = queue:start(QueueManagerPID),
     register(queue, QueuePID),
@@ -36,7 +30,7 @@ start(ElevatorType) ->
     
     spawn(fun() -> scheduler_manager() end).
 
-		  
+
 
 
 
@@ -71,12 +65,8 @@ driver_manager_init() -> % more dirty tricks
 driver_manager() ->
     receive
 	{new_order, Direction, Floor} ->
-	    case order_db:add_order(Floor, Direction) of
-		ok ->
-		    scheduler:schedule_order(global:whereis_name(scheduler), Floor, Direction);
-		_Else ->
-		    do_nothing
-	    end;
+	    order_storage:add_order(order_storage, Floor, Direction),
+	    scheduler:schedule_order(global:whereis_name(scheduler), Floor, Direction); % this schedule event can block floor_reached
 	{floor_reached, Floor} ->
 	    fsm:event_floor_reached(fsm),
 	    queue:floor_reached(queue, Floor)
@@ -85,7 +75,7 @@ driver_manager() ->
 
 button_light_manager() ->
     SetLightFunction = fun(Floor, Direction) ->
-			       elev_driver:set_button_lamp(Floor, Direction, order_db:is_order(Floor, Direction))
+			       elev_driver:set_button_lamp(Floor, Direction, order_storage:is_order(order_storage, Floor, Direction)) % hard line to grasp
 		       end,	 
     
     foreach_button(SetLightFunction),
@@ -108,7 +98,7 @@ scheduler_manager() ->
 queue_manager() ->			    
     receive
 	{order_served, Floor, Direction} ->
-	    order_db:remove_order(Floor, Direction) %no guarantee for this action will happen
+	    order_storage:remove_order(order_storage, Floor, Direction)
     end,
     queue_manager().
 
