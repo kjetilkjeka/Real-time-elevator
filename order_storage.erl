@@ -30,16 +30,17 @@ add_order(Floor, Direction) ->
 
 remove_order(Floor, Direction) ->
     Self = self(),
+    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME),
     Order = #order{floor=Floor, direction=Direction},
     AddOrderFunction = fun(OrderDistributorPid) ->
-			       OrderDistributorPid ! {remove_order, Order, Self}
+			       OrderDistributorPid ! {remove_order, Order, ClosestDistributer, Self}
 		       end,
     foreach_distributer(AddOrderFunction).
 
 
 is_order(Floor, Direction) ->
     Order = #order{floor=Floor, direction=Direction},
-    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME),
+    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME), %do check if it's on same node
     ClosestDistributer ! {is_order, Order, self()},
     receive
 	{is_order, Order, Response} ->
@@ -94,8 +95,8 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 	    Response = is_in_orders(Orders, Order, self()),
 	    Caller ! {is_order, Order, Response},
 	    loop(Orders);
-	{remove_order, Order, _Caller} ->
-	    NewOrders = remove_from_orders(Orders, Order, self()),
+	{remove_order, Order, Handler, _Caller} ->
+	    NewOrders = remove_from_orders(Orders, Order, Handler),
 	    remove_from_dets(Order),
 	    loop(NewOrders);
 	{add_order, Order, Handler, _Caller} ->
@@ -162,7 +163,7 @@ receive_bids(MembersNotCommited) ->
 %% Functions encapsulating what datatype Orders realy is
 %%%%%%%%%%%%%%%%
 
-add_to_orders(Orders, Order, Handler) -> dict:append(Order, Handler, Orders).
+add_to_orders(Orders, Order, Handler) -> dict:append(Order, Handler, Orders). % dont add if it's already there
 
 %this is not the nicest construct of a function in the world. Pretty many ifs and cases. !!!!!!Should do this with pattern matching ofcourse!!!!
 remove_from_orders(Orders, Order, Handler) -> %pretty simuliar construct as is_in_order, possible to do more general?
@@ -171,12 +172,13 @@ remove_from_orders(Orders, Order, Handler) -> %pretty simuliar construct as is_i
 	    case dict:is_key(Order, Orders) of
 		true ->
 		    Handlers = dict:fetch(Order, Orders),
-		    NewHandlers = lists:delete(Handler, Handlers),
+		    FilterCondition = fun(ElementInHandlers) -> Handler /= ElementInHandlers end, 
+		    NewHandlers = lists:filter(FilterCondition, Handlers),
 		    DictWithoutOrder = dict:erase(Order, Orders),
 		    dict:append_list(Order, NewHandlers, DictWithoutOrder);
 		
 		false ->
-		    false
+		    false % might not be the best response
 	    end;
 	(Order#order.direction == up) or (Order#order.direction == down) ->
 	    dict:erase(Order, Orders)
