@@ -95,7 +95,7 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 	    Caller ! {is_order, Order, Response},
 	    loop(Orders);
 	{remove_order, Order, _Caller} ->
-	    NewOrders = remove_from_orders(Orders, Order),
+	    NewOrders = remove_from_orders(Orders, Order, self()),
 	    remove_from_dets(Order),
 	    loop(NewOrders);
 	{add_order, Order, Handler, _Caller} ->
@@ -163,7 +163,26 @@ receive_bids(MembersNotCommited) ->
 %%%%%%%%%%%%%%%%
 
 add_to_orders(Orders, Order, Handler) -> dict:append(Order, Handler, Orders).
-remove_from_orders(Orders, Order) -> dict:erase(Order, Orders).
+
+%this is not the nicest construct of a function in the world. Pretty many ifs and cases. !!!!!!Should do this with pattern matching ofcourse!!!!
+remove_from_orders(Orders, Order, Handler) -> %pretty simuliar construct as is_in_order, possible to do more general?
+    if 
+	Order#order.direction == command ->
+	    case dict:is_key(Order, Orders) of
+		true ->
+		    Handlers = dict:fetch(Order, Orders),
+		    NewHandlers = lists:delete(Handler, Handlers),
+		    DictWithoutOrder = dict:erase(Order, Orders),
+		    dict:append_list(Order, NewHandlers, DictWithoutOrder);
+		
+		false ->
+		    false
+	    end;
+	(Order#order.direction == up) or (Order#order.direction == down) ->
+	    dict:erase(Order, Orders)
+    end.
+
+% do this with pattern matching instead
 is_in_orders(Orders, Order, Handler) -> 
     if 
 	Order#order.direction == command ->
