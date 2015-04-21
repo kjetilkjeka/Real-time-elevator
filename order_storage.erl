@@ -68,13 +68,14 @@ start(Listener) ->
 
 init(Listener) ->
     put(listener, Listener),
+    init_dets(),
     join_process_group(),
-    loop(dict:new()).
+    loop(add_orders_from_dets(dict:new())).
 
 loop(Orders) -> % OrderMap maps orders to something descriptive
     receive
 	{request_bid, Floor, Direction, Caller} ->
-	    Price = request_bid(Floor, Direction),
+	    Price = request_bid(Floor, Direction), % this may cause deadlock if request bid fucks up
 	    Caller ! {bid_price, Price, self()},
 	    loop(Orders);						       
 	{is_order, Order, Caller} ->
@@ -83,8 +84,10 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 	    loop(Orders);
 	{remove_order, Order, _Caller} ->
 	    NewOrders = remove_from_orders(Orders, Order),
+	    remove_from_dets(Order),
 	    loop(NewOrders);
 	{add_order, Order, Handler, _Caller} ->
+	    add_to_dets(Order),
 	    NewOrders = add_to_orders(Orders, Order, Handler),
 	    case Handler == self() of
 		true ->
