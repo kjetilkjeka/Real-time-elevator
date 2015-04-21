@@ -20,7 +20,7 @@ start(ElevatorType) ->
     FsmPID = fsm:start(FsmManagerPid),
     register(fsm, FsmPID),
     
-    spawn(fun() -> button_light_manager() end),
+    spawn(fun() -> button_light_manager_init() end),
     
     QueueManagerPID = spawn(fun() -> queue_manager() end),
     QueuePID = queue:start(QueueManagerPID),
@@ -72,6 +72,9 @@ driver_manager() ->
     end,
     driver_manager().
 
+button_light_manager_init() ->
+    timer:sleep(100),
+    button_light_manager().
 button_light_manager() ->
     SetLightFunction = fun(Floor, Direction) ->
 			       elev_driver:set_button_lamp(Floor, Direction, order_storage:is_order(Floor, Direction)) % hard line to grasp
