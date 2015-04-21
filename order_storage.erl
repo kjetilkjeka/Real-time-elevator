@@ -17,7 +17,7 @@ add_order(Floor, Direction) ->
 				schedule_order(Floor, Direction); % should maybe happend isolated from caller ? it might deadlock ? maybe it's better crash the caller as well?
 			    Direction == command ->
 				ClosestScheduler = pg2:get_closest_pid(?PROCESS_GROUP_NAME),  
-				NodeForClosesScheduler = node(ClosestScheduler),
+				NodeForClosesScheduler = node(ClosestScheduler), % the crash if not on same node can maybe be done nicer. What if no process exists?
 				NodeForClosesScheduler = node(),
 				ClosestScheduler
 			end,
@@ -91,7 +91,7 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 	    Caller ! {bid_price, Price, self()},
 	    loop(Orders);						       
 	{is_order, Order, Caller} ->
-	    Response = is_in_orders(Orders, Order),
+	    Response = is_in_orders(Orders, Order, self()),
 	    Caller ! {is_order, Order, Response},
 	    loop(Orders);
 	{remove_order, Order, _Caller} ->
@@ -164,7 +164,20 @@ receive_bids(MembersNotCommited) ->
 
 add_to_orders(Orders, Order, Handler) -> dict:append(Order, Handler, Orders).
 remove_from_orders(Orders, Order) -> dict:erase(Order, Orders).
-is_in_orders(Orders, Order) -> dict:is_key(Order, Orders).
+is_in_orders(Orders, Order, Handler) -> 
+    if 
+	Order#order.direction == command ->
+	    case dict:is_key(Order, Orders) of
+		true ->
+		    Handlers = dict:fetch(Order, Orders),
+		    lists:member(Handler, Handlers);
+		false ->
+		    false
+	    end;
+	(Order#order.direction == up) or (Order#order.direction == down) ->
+	    dict:is_key(Order, Orders)
+    end.
+	
 %Function(Order, Handler)
 foreach_order(Orders, Function) -> 
     F = fun({Order, Handler}) -> Function(Order, Handler) end,
