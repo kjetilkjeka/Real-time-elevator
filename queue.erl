@@ -85,7 +85,7 @@ start(Listener) ->
 
 init(Listener) ->
     put(listener, Listener),
-    loop(#schedule{}).
+    loop(#schedule{elevator_next_floor = 0, elevator_direction = stop}). % this is a dirty hack. Should be fixed by initializing properly
 
 loop(Schedule) ->
     receive

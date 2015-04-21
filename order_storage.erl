@@ -70,7 +70,9 @@ init(Listener) ->
     put(listener, Listener),
     init_dets(),
     join_process_group(),
-    loop(add_orders_from_dets(dict:new())).
+    Orders = add_orders_from_dets(dict:new()),
+    reschedule_orders_async(Orders),
+    loop(Orders).
 
 loop(Orders) -> % OrderMap maps orders to something descriptive
     receive
@@ -105,9 +107,25 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 %% functions for scheduling order
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+reschedule_orders_async(Orders) -> % a bit messy, fix plz
+    Reschedule = fun(Order, _Handler) ->
+			 BidWinner = schedule_order(Order#order.floor, Order#order.direction),
+			 Self = self(),
+			 AddOrderFunction = fun(OrderDistributorPid) ->
+						    OrderDistributorPid ! {add_order, Order, BidWinner, Self}
+					    end,
+			 foreach_distributer(AddOrderFunction)
+		 end,
+
+    spawn(fun() -> foreach_order(Orders, Reschedule) end). % plz make this safer by timing and killing
+ 		  
+    
+
+    
+% should maybe take order record since it's called reschedule_!order!
 % many io:formats here for debugging, consider removing at the end.
 schedule_order(Floor, Direction) -> % may cause deadlock if members change between calls
-    io:format("Order auction started~n", []),
+    io:format("Order auction started on order Floor: ~w, Direction: ~w ~n", [Floor, Direction]),
     Self = self(),
     RequestBidFunction = fun(Member) ->
 				 Member ! {request_bid, Floor, Direction, Self}
@@ -137,7 +155,11 @@ receive_bids(MembersNotCommited) ->
 add_to_orders(Orders, Order, Handler) -> dict:append(Order, Handler, Orders).
 remove_from_orders(Orders, Order) -> dict:erase(Order, Orders).
 is_in_orders(Orders, Order) -> dict:is_key(Order, Orders).
-
+%Function(Order, Handler)
+foreach_order(Orders, Function) -> 
+    F = fun({Order, Handler}) -> Function(Order, Handler) end,
+    lists:foreach(F, dict:to_list(Orders)).
+     
 
 %% Communication/Synchronization procedures
 %%%%%%%%%%%%%%%%%%%
