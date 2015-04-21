@@ -4,6 +4,7 @@
 -record(order, {floor, direction}).
 
 -define(PROCESS_GROUP_NAME, order_distributers).
+-define(DETS_TABLE_NAME, "orders").
 
 % this should maybe be done with dict so it can map from order to handler
 
@@ -146,3 +147,22 @@ join_process_group() -> % need maybe better name?
 foreach_distributer(Function) -> % maybe foreach_member
     OrderDistributers = pg2:get_members(?PROCESS_GROUP_NAME),
     lists:foreach(Function, OrderDistributers).
+
+
+%% Functions interfacing the disc copy
+%%%%%%%%%%%%%%%%%%%%%
+
+init_dets() ->
+    dets:open_file(?DETS_TABLE_NAME, [{type,bag}]).
+
+add_to_dets(Order) ->
+    dets:insert(?DETS_TABLE_NAME, Order).
+
+remove_from_dets(Order) ->
+    dets:delete_object(?DETS_TABLE_NAME, Order).
+
+add_orders_from_dets(Orders) ->
+    %consider removing all non order elements first
+    Self = self(),
+    AddOrderFunction = fun(Order, Orders) -> add_to_orders(Orders, Order, Self) end, %shadowed warning, maybe find better name?
+    dets:foldl(AddOrderFunction, Orders, ?DETS_TABLE_NAME).
