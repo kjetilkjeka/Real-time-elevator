@@ -12,11 +12,19 @@
 %%%%%%%%%%
 
 add_order(Floor, Direction) ->
-    BidWinner = schedule_order(Floor, Direction), % should maybe happend isolated from caller ? it might deadlock ? maybe it's better crash the caller as well?
+    HandlingScheduler = if 
+			    (Direction == up) or (Direction == down) -> 
+				schedule_order(Floor, Direction); % should maybe happend isolated from caller ? it might deadlock ? maybe it's better crash the caller as well?
+			    Direction == command ->
+				ClosestScheduler = pg2:get_closest_pid(?PROCESS_GROUP_NAME),  
+				NodeForClosesScheduler = node(ClosestScheduler),
+				NodeForClosesScheduler = node(),
+				ClosestScheduler
+			end,
     Self = self(),
     Order = #order{floor=Floor, direction=Direction},
     AddOrderFunction = fun(OrderDistributorPid) ->
-			       OrderDistributorPid ! {add_order, Order, BidWinner, Self}
+			       OrderDistributorPid ! {add_order, Order, HandlingScheduler, Self}
 		       end,
     foreach_distributer(AddOrderFunction).
 
@@ -76,6 +84,8 @@ init(Listener) ->
 
 loop(Orders) -> % OrderMap maps orders to something descriptive
     receive
+	upgrade ->
+	    ?MODULE:loop(Orders);
 	{request_bid, Floor, Direction, Caller} ->
 	    Price = request_bid(Floor, Direction), % this may cause deadlock if request bid fucks up
 	    Caller ! {bid_price, Price, self()},
