@@ -12,28 +12,24 @@
 %%%%%%%%%%
 
 add_order(Floor, Direction) ->
-    HandlingScheduler = if 
-			    (Direction == up) or (Direction == down) -> 
-				schedule_order(Floor, Direction); % should maybe happend isolated from caller ? it might deadlock ? maybe it's better crash the caller as well?
-			    Direction == command ->
-				ClosestScheduler = pg2:get_closest_pid(?PROCESS_GROUP_NAME),  
-				NodeForClosesScheduler = node(ClosestScheduler), % the crash if not on same node can maybe be done nicer. What if no process exists?
-				NodeForClosesScheduler = node(),
-				ClosestScheduler
-			end,
+    HandlingNode = if 
+		       (Direction == up) or (Direction == down) -> 
+			   node(schedule_order(Floor, Direction)); % should maybe happend isolated from caller ? it might deadlock ? maybe it's better crash the caller as well?
+		       Direction == command ->
+			   node()
+		   end,
     Self = self(),
     Order = #order{floor=Floor, direction=Direction},
     AddOrderFunction = fun(OrderDistributorPid) ->
-			       OrderDistributorPid ! {add_order, Order, HandlingScheduler, Self}
+			       OrderDistributorPid ! {add_order, Order, HandlingNode, Self}
 		       end,
     foreach_distributer(AddOrderFunction).
 
 remove_order(Floor, Direction) ->
     Self = self(),
-    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME),
     Order = #order{floor=Floor, direction=Direction},
     AddOrderFunction = fun(OrderDistributorPid) ->
-			       OrderDistributorPid ! {remove_order, Order, ClosestDistributer, Self}
+			       OrderDistributorPid ! {remove_order, Order, node(), Self}
 		       end,
     foreach_distributer(AddOrderFunction).
 
@@ -41,7 +37,7 @@ remove_order(Floor, Direction) ->
 is_order(Floor, Direction) ->
     Order = #order{floor=Floor, direction=Direction},
     ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME), %do check if it's on same node
-    ClosestDistributer ! {is_order, Order, self()},
+    ClosestDistributer ! {is_order, Order, node(), self()},
     receive
 	{is_order, Order, Response} ->
 	    Response
@@ -58,7 +54,7 @@ get_orders(Pid) -> %function for debug only
 %% Callbacks
 %%%%%%%%%%%
 
-request_bid(Floor, Direction) ->
+request_bid(Floor, Direction) -> %this can ofcourse deadlock
     get(listener) ! {bid_request, Floor, Direction, self()},
     receive 
 	{bid_price, Price} ->
@@ -77,7 +73,6 @@ start(Listener) ->
 
 init(Listener) ->
     put(listener, Listener),
-    init_dets(),
     join_process_group(),
     Orders = add_orders_from_dets(dict:new()),
     reschedule_orders_async(Orders),
@@ -91,18 +86,18 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 	    Price = request_bid(Floor, Direction), % this may cause deadlock if request bid fucks up
 	    Caller ! {bid_price, Price, self()},
 	    loop(Orders);						       
-	{is_order, Order, Caller} ->
-	    Response = is_in_orders(Orders, Order, self()),
+	{is_order, Order, Node, Caller} ->
+	    Response = is_in_orders(Orders, Order, Node),
 	    Caller ! {is_order, Order, Response},
 	    loop(Orders);
-	{remove_order, Order, Handler, _Caller} ->
-	    NewOrders = remove_from_orders(Orders, Order, Handler),
+	{remove_order, Order, HandlerNode, _Caller} ->
+	    NewOrders = remove_from_orders(Orders, Order, HandlerNode),
 	    remove_from_dets(Order),
 	    loop(NewOrders);
-	{add_order, Order, Handler, _Caller} ->
+	{add_order, Order, HandlerNode, _Caller} ->
 	    add_to_dets(Order),
-	    NewOrders = add_to_orders(Orders, Order, Handler),
-	    case Handler == self() of
+	    NewOrders = add_to_orders(Orders, Order, HandlerNode),
+	    case HandlerNode == node() of
 		true ->
 		    handle_order(Order);
 		false ->
@@ -120,10 +115,10 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 
 reschedule_orders_async(Orders) -> % a bit messy, fix plz
     Reschedule = fun(Order, _Handler) ->
-			 BidWinner = schedule_order(Order#order.floor, Order#order.direction),
+			 WinnerNode = node(schedule_order(Order#order.floor, Order#order.direction)),
 			 Self = self(),
 			 AddOrderFunction = fun(OrderDistributorPid) ->
-						    OrderDistributorPid ! {add_order, Order, BidWinner, Self}
+						    OrderDistributorPid ! {add_order, Order, WinnerNode, Self}
 					    end,
 			 foreach_distributer(AddOrderFunction)
 		 end,
@@ -163,19 +158,19 @@ receive_bids(MembersNotCommited) ->
 %% Functions encapsulating what datatype Orders realy is
 %%%%%%%%%%%%%%%%
 
-add_to_orders(Orders, Order, Handler) -> dict:append(Order, Handler, Orders). % dont add if it's already there
+add_to_orders(Orders, Order, HandlerNode) -> dict:append(Order, HandlerNode, Orders). % dont add if it's already there
 
 %this is not the nicest construct of a function in the world. Pretty many ifs and cases. !!!!!!Should do this with pattern matching ofcourse!!!!
-remove_from_orders(Orders, Order, Handler) -> %pretty simuliar construct as is_in_order, possible to do more general?
+remove_from_orders(Orders, Order, HandlerNode) -> %pretty simuliar construct as is_in_order, possible to do more general?
     if 
 	Order#order.direction == command ->
 	    case dict:is_key(Order, Orders) of
 		true ->
-		    Handlers = dict:fetch(Order, Orders),
-		    FilterCondition = fun(ElementInHandlers) -> Handler /= ElementInHandlers end, 
-		    NewHandlers = lists:filter(FilterCondition, Handlers),
+		    HandlerNodes = dict:fetch(Order, Orders),
+		    FilterCondition = fun(ElementInHandlerNodes) -> HandlerNode /= ElementInHandlerNodes end, 
+		    NewHandlerNodes = lists:filter(FilterCondition, HandlerNodes),
 		    DictWithoutOrder = dict:erase(Order, Orders),
-		    dict:append_list(Order, NewHandlers, DictWithoutOrder);
+		    dict:append_list(Order, NewHandlerNodes, DictWithoutOrder);
 		
 		false ->
 		    false % might not be the best response
@@ -185,13 +180,13 @@ remove_from_orders(Orders, Order, Handler) -> %pretty simuliar construct as is_i
     end.
 
 % do this with pattern matching instead
-is_in_orders(Orders, Order, Handler) -> 
+is_in_orders(Orders, Order, HandlerNode) -> 
     if 
 	Order#order.direction == command ->
 	    case dict:is_key(Order, Orders) of
 		true ->
-		    Handlers = dict:fetch(Order, Orders),
-		    lists:member(Handler, Handlers);
+		    HandlerNodes = dict:fetch(Order, Orders),
+		    lists:member(HandlerNode, HandlerNodes);
 		false ->
 		    false
 	    end;
@@ -199,9 +194,9 @@ is_in_orders(Orders, Order, Handler) ->
 	    dict:is_key(Order, Orders)
     end.
 	
-%Function(Order, Handler)
+%Function(Order, Distributer)
 foreach_order(Orders, Function) -> 
-    F = fun({Order, Handler}) -> Function(Order, Handler) end,
+    F = fun({Order, Distributer}) -> Function(Order, Distributer) end,
     lists:foreach(F, dict:to_list(Orders)).
      
 
@@ -221,17 +216,23 @@ foreach_distributer(Function) -> % maybe foreach_member
 %% Functions interfacing the disc copy
 %%%%%%%%%%%%%%%%%%%%%
 
-init_dets() ->
-    dets:open_file(?DETS_TABLE_NAME, [{type,bag}]).
 
 add_to_dets(Order) ->
-    dets:insert(?DETS_TABLE_NAME, Order).
+    dets:open_file(?DETS_TABLE_NAME, [{type,bag}]),
+    dets:insert(?DETS_TABLE_NAME, Order),
+    dets:close(?DETS_TABLE_NAME).
+
 
 remove_from_dets(Order) ->
-    dets:delete_object(?DETS_TABLE_NAME, Order).
+    dets:open_file(?DETS_TABLE_NAME, [{type,bag}]),
+    dets:delete_object(?DETS_TABLE_NAME, Order),
+    dets:close(?DETS_TABLE_NAME).
 
 add_orders_from_dets(Orders) ->
     %consider removing all non order elements first
     Self = self(),
     AddOrderFunction = fun(Order, Orders) -> add_to_orders(Orders, Order, Self) end, %shadowed warning, maybe find better name?
-    dets:foldl(AddOrderFunction, Orders, ?DETS_TABLE_NAME).
+    dets:open_file(?DETS_TABLE_NAME, [{type,bag}]),
+    NewOrders = dets:foldl(AddOrderFunction, Orders, ?DETS_TABLE_NAME),
+    dets:close(?DETS_TABLE_NAME),
+    NewOrders.
