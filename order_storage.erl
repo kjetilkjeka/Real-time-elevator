@@ -74,6 +74,7 @@ start(Listener) ->
 init(Listener) ->
     put(listener, Listener),
     join_process_group(),
+    %start_topology_change_detector(),
     Orders = add_orders_from_dets(dict:new()),
     reschedule_orders_async(Orders),
     loop(Orders).
@@ -82,6 +83,13 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
     receive
 	upgrade ->
 	    ?MODULE:loop(Orders);
+	{reschedule, OrdersForRescheduling} -> %don't know how smart this realy is
+	    case OrdersForRescheduling of
+		all ->
+		    reschedule_orders_async(Orders);
+		OrdersForRescheduling ->
+		    reschedule_orders_async(OrdersForRescheduling)
+	    end;		    
 	{request_bid, Floor, Direction, Caller} ->
 	    Price = request_bid(Floor, Direction), % this may cause deadlock if request bid fucks up
 	    Caller ! {bid_price, Price, self()},
@@ -108,7 +116,7 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 	    Caller ! {orders, Orders},
 	    loop(Orders)
     end.
-    
+
 
 %% functions for scheduling order
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -124,10 +132,10 @@ reschedule_orders_async(Orders) -> % a bit messy, fix plz
 		 end,
 
     spawn(fun() -> foreach_order(Orders, Reschedule) end). % plz make this safer by timing and killing
- 		  
-    
 
-    
+
+
+
 % should maybe take order record since it's called reschedule_!order!
 % many io:formats here for debugging, consider removing at the end.
 schedule_order(Floor, Direction) -> % may cause deadlock if members change between calls
@@ -236,3 +244,42 @@ add_orders_from_dets(Orders) ->
     NewOrders = dets:foldl(AddOrderFunction, Orders, ?DETS_TABLE_NAME),
     dets:close(?DETS_TABLE_NAME),
     NewOrders.
+
+
+
+%% Functions for detecting and managing differance in network topology
+%%%%%%%%%%%%%%%%%%
+
+start_topology_change_detector() ->
+    spawn(fun() -> network_topology_change_detector(pg2:get_members(?PROCESS_GROUP_NAME)) end).
+		  
+
+members_added(_MembersAdded) ->
+    do_nothing.
+
+members_dissapered(_MembersDissapered) ->
+    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME), %do check if it's on same node
+    ClosestDistributer ! {reschedule, all}.
+
+network_topology_change_detector(OldMembers) ->
+    MembersNow = pg2:get_members(?PROCESS_GROUP_NAME),
+    MembersAdded = lists:subtract(MembersNow, OldMembers),
+    MembersDissapered = lists:subtract(OldMembers, MembersNow),
+    
+    case MembersAdded == [] of
+	true ->
+	    do_nothing;
+	false ->
+	    members_added(MembersAdded)
+    end,
+
+    case MembersDissapered == [] of
+	true ->
+	    do_nothing;
+	false ->
+	    members_dissapered(MembersDissapered)
+    end,
+    
+    timer:sleep(10000),
+    network_topology_change_detector(MembersNow).
+
