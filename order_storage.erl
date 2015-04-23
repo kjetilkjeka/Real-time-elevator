@@ -43,7 +43,8 @@ is_order(Floor, Direction) ->
 	    Response
     end.
 
-get_orders(Pid) -> %function for debug only
+get_orders() -> %function for debug only
+    Pid = pg2:get_closest_pid(?PROCESS_GROUP_NAME),
     Pid ! {get_orders, self()},
     receive
 	{orders, Orders} ->
@@ -126,7 +127,7 @@ reschedule_orders_async(Orders) -> % a bit messy, fix plz
 			 WinnerNode = node(schedule_order(Order#order.floor, Order#order.direction)),
 			 Self = self(),
 			 AddOrderFunction = fun(OrderDistributorPid) ->
-						    OrderDistributorPid ! {add_order, Order, WinnerNode, Self}
+						    OrderDistributorPid ! {add_order, Order, WinnerNode, Self} % Winner node is derp
 					    end,
 			 foreach_distributer(AddOrderFunction)
 		 end,
@@ -166,26 +167,43 @@ receive_bids(MembersNotCommited) ->
 %% Functions encapsulating what datatype Orders realy is
 %%%%%%%%%%%%%%%%
 
-add_to_orders(Orders, Order, HandlerNode) -> dict:append(Order, HandlerNode, Orders). % dont add if it's already there
+add_to_orders(Orders, Order, HandlerNode) when Order#order.direction == command -> 
+    case dict:is_key(Order, Orders) of
+	true ->
+	    CurrentHandlers = dict:fetch(Order, Orders),
+	    NewHandlers = case lists:member(HandlerNode, CurrentHandlers) of
+			      true ->
+				  CurrentHandlers;
+			      false ->
+				  [HandlerNode|CurrentHandlers]
+			  end,
+	    dict:store(Order, NewHandlers, Orders);
+	false ->
+	    dict:append(Order, HandlerNode, Orders)
+    end;
+
+add_to_orders(Orders, Order, HandlerNode) when (Order#order.direction == up) or (Order#order.direction == down) ->
+    dict:store(Order, [HandlerNode], Orders).
+    
+
+
 
 %this is not the nicest construct of a function in the world. Pretty many ifs and cases. !!!!!!Should do this with pattern matching ofcourse!!!!
-remove_from_orders(Orders, Order, HandlerNode) -> %pretty simuliar construct as is_in_order, possible to do more general?
-    if 
-	Order#order.direction == command ->
-	    case dict:is_key(Order, Orders) of
-		true ->
-		    HandlerNodes = dict:fetch(Order, Orders),
-		    FilterCondition = fun(ElementInHandlerNodes) -> HandlerNode /= ElementInHandlerNodes end, 
-		    NewHandlerNodes = lists:filter(FilterCondition, HandlerNodes),
-		    DictWithoutOrder = dict:erase(Order, Orders),
-		    dict:append_list(Order, NewHandlerNodes, DictWithoutOrder);
-		
-		false ->
-		    false % might not be the best response
-	    end;
-	(Order#order.direction == up) or (Order#order.direction == down) ->
-	    dict:erase(Order, Orders)
-    end.
+remove_from_orders(Orders, Order, HandlerNode) when Order#order.direction == command-> %pretty simuliar construct as is_in_order, possible to do more general?
+    case dict:is_key(Order, Orders) of
+	true ->
+	    HandlerNodes = dict:fetch(Order, Orders),
+	    FilterCondition = fun(ElementInHandlerNodes) -> HandlerNode /= ElementInHandlerNodes end, 
+	    NewHandlerNodes = lists:filter(FilterCondition, HandlerNodes),
+	    DictWithoutOrder = dict:erase(Order, Orders),
+	    dict:append_list(Order, NewHandlerNodes, DictWithoutOrder);
+	
+	false ->
+	    Orders
+    end;
+remove_from_orders(Orders, Order, _HandlerNode) when (Order#order.direction == up) or (Order#order.direction == down) ->
+    dict:erase(Order, Orders).
+
 
 % do this with pattern matching instead
 is_in_orders(Orders, Order, HandlerNode) -> 
