@@ -5,25 +5,22 @@
 
 -define(PROCESS_GROUP_NAME, order_distributers).
 -define(DETS_TABLE_NAME, "orders").
+-define(SCHEDULING_TIMEOUT, 5000).
 
 % this should maybe be done with dict so it can map from order to handler
 
 %% API
 %%%%%%%%%%
 
-add_order(Floor, Direction) ->
-    HandlingNode = if 
-		       (Direction == up) or (Direction == down) -> 
-			   node(schedule_order(Floor, Direction)); % should maybe happend isolated from caller ? it might deadlock ? maybe it's better crash the caller as well?
-		       Direction == command ->
-			   node()
-		   end,
+add_order(Floor, Direction) when (Direction == up) or (Direction == down) ->
+    schedule_order_async(#order {floor = Floor, direction = Direction}, ?SCHEDULING_TIMEOUT);
+add_order(Floor, Direction) when Direction == command ->
+    HandlingNode = node(),
     Self = self(),
     Order = #order{floor=Floor, direction=Direction},
-    AddOrderFunction = fun(OrderDistributorPid) ->
-			       OrderDistributorPid ! {add_order, Order, HandlingNode, Self}
-		       end,
-    foreach_distributer(AddOrderFunction).
+    MemberList = get_member_list(),
+    AddOrderFunction = fun(OrderDistributorPid) -> OrderDistributorPid ! {add_order, Order, HandlingNode, Self} end,
+    lists:foreach(AddOrderFunction, MemberList).
 
 remove_order(Floor, Direction) ->
     Self = self(),
@@ -77,20 +74,20 @@ init(Listener) ->
     join_process_group(),
     %start_topology_change_detector(),
     Orders = add_orders_from_dets(dict:new()),
-    reschedule_orders_async(Orders),
+    %reschedule_orders_async(Orders),
     loop(Orders).
 
 loop(Orders) -> % OrderMap maps orders to something descriptive
     receive
 	upgrade ->
 	    ?MODULE:loop(Orders);
-	{reschedule, OrdersForRescheduling} -> %don't know how smart this realy is
-	    case OrdersForRescheduling of
-		all ->
-		    reschedule_orders_async(Orders);
-		OrdersForRescheduling ->
-		    reschedule_orders_async(OrdersForRescheduling)
-	    end;		    
+	%{reschedule, OrdersForRescheduling} -> %don't know how smart this realy is
+	   % case OrdersForRescheduling of
+	%	all ->
+	%	    reschedule_orders_async(Orders);
+	%	OrdersForRescheduling ->
+	%	    reschedule_orders_async(OrdersForRescheduling)
+	 %   end;		    
 	{request_bid, Floor, Direction, Caller} ->
 	    Price = request_bid(Floor, Direction), % this may cause deadlock if request bid fucks up
 	    Caller ! {bid_price, Price, self()},
@@ -122,37 +119,32 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 %% functions for scheduling order
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-reschedule_orders_async(Orders) -> % a bit messy, fix plz
-    Reschedule = fun(Order, _Handler) ->
-			 WinnerNode = node(schedule_order(Order#order.floor, Order#order.direction)),
-			 Self = self(),
-			 AddOrderFunction = fun(OrderDistributorPid) ->
-						    OrderDistributorPid ! {add_order, Order, WinnerNode, Self} % Winner node is derp
-					    end,
-			 foreach_distributer(AddOrderFunction)
-		 end,
-
-    spawn(fun() -> foreach_order(Orders, Reschedule) end). % plz make this safer by timing and killing
-
-
+schedule_order_async(Order, Timeout) ->
+    MemberList = get_member_list(),
+    SchedulerPID = spawn(fun() -> 
+				 WinningNode = schedule_order(Order#order.floor, Order#order.direction, MemberList),
+				 AddOrderFunction = fun(Member) -> Member ! {add_order, Order, WinningNode, self()} end,
+				 lists:foreach(AddOrderFunction, MemberList)
+			 end),
+    timer:kill_after(Timeout, SchedulerPID),
+    SchedulerPID.
 
 
 % should maybe take order record since it's called reschedule_!order!
 % many io:formats here for debugging, consider removing at the end.
-schedule_order(Floor, Direction) -> % may cause deadlock if members change between calls
+schedule_order(Floor, Direction, MemberList) when (Direction == up) or (Direction == down) -> % may cause deadlock if members change between calls
     io:format("Order auction started on order Floor: ~w, Direction: ~w ~n", [Floor, Direction]),
+    io:format("Members are ~w ~n", [MemberList]),
     Self = self(),
-    RequestBidFunction = fun(Member) ->
-				 Member ! {request_bid, Floor, Direction, Self}
-			 end,
-    foreach_distributer(RequestBidFunction),
-    AllMembers = pg2:get_members(?PROCESS_GROUP_NAME),
-    io:format("Members are ~w ~n", [AllMembers]),
-    Bids = receive_bids(AllMembers),
+    RequestBidFunction = fun(Member) -> Member ! {request_bid, Floor, Direction, Self} end,
+    lists:foreach(RequestBidFunction, MemberList),
+    Bids = receive_bids(MemberList),
     io:format("Bids are ~w ~n", [Bids]),
     {_LeastBid, WinningMember} = lists:min(Bids),
-    io:format("Winning member is ~w ~n", [WinningMember]),
-    WinningMember.
+    WinningNode = node(WinningMember),
+    io:format("Winning node is ~w ~n", [WinningNode]),
+    WinningNode.
+
 
 
 receive_bids([]) ->
@@ -221,7 +213,7 @@ is_in_orders(Orders, Order, HandlerNode) ->
     end.
 	
 %Function(Order, Distributer)
-foreach_order(Orders, Function) -> 
+foreach_order(Orders, Function) -> % this one might be broke, is it defined how many times command orders will be done?
     F = fun({Order, Distributer}) -> Function(Order, Distributer) end,
     lists:foreach(F, dict:to_list(Orders)).
      
@@ -238,6 +230,8 @@ foreach_distributer(Function) -> % maybe foreach_member
     OrderDistributers = pg2:get_members(?PROCESS_GROUP_NAME),
     lists:foreach(Function, OrderDistributers).
 
+get_member_list() ->
+    pg2:get_members(?PROCESS_GROUP_NAME).
 
 %% Functions interfacing the disc copy
 %%%%%%%%%%%%%%%%%%%%%
