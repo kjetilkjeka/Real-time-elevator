@@ -73,8 +73,14 @@ init(Listener) ->
     put(listener, Listener),
     join_process_group(),
     %start_topology_change_detector(),
-    Orders = add_orders_from_dets(dict:new()),
     %reschedule_orders_async(Orders),
+    OrderList = get_order_list_from_dets(),
+    AddToOrders = fun(Order, Orders) -> 
+			  add_to_orders(Orders, Order, node())
+		  end,
+    Orders = lists:foldl(AddToOrders, dict:new(), OrderList),
+    HandleOrders = fun(Order) -> handle_order(Order) end,
+    lists:foreach(HandleOrders, OrderList),
     loop(Orders).
 
 loop(Orders) -> % OrderMap maps orders to something descriptive
@@ -248,14 +254,11 @@ remove_from_dets(Order) ->
     dets:delete_object(?DETS_TABLE_NAME, Order),
     dets:close(?DETS_TABLE_NAME).
 
-add_orders_from_dets(Orders) ->
-    %consider removing all non order elements first
-    Self = self(),
-    AddOrderFunction = fun(Order, Orders) -> add_to_orders(Orders, Order, Self) end, %shadowed warning, maybe find better name?
+get_order_list_from_dets() ->
     dets:open_file(?DETS_TABLE_NAME, [{type,bag}]),
-    NewOrders = dets:foldl(AddOrderFunction, Orders, ?DETS_TABLE_NAME),
+    OrderList = dets:lookup(?DETS_TABLE_NAME, order),
     dets:close(?DETS_TABLE_NAME),
-    NewOrders.
+    OrderList.
 
 
 
