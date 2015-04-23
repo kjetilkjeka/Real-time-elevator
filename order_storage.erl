@@ -72,8 +72,7 @@ start(Listener) ->
 init(Listener) ->
     put(listener, Listener),
     join_process_group(),
-    %start_topology_change_detector(),
-    %reschedule_orders_async(Orders),
+    start_topology_change_detector(),
     OrderList = get_order_list_from_dets(),
     AddToOrders = fun(Order, Orders) -> 
 			  add_to_orders(Orders, Order, node())
@@ -87,13 +86,22 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
     receive
 	upgrade ->
 	    ?MODULE:loop(Orders);
-	%{reschedule, OrdersForRescheduling} -> %don't know how smart this realy is
-	   % case OrdersForRescheduling of
-	%	all ->
-	%	    reschedule_orders_async(Orders);
-	%	OrdersForRescheduling ->
-	%	    reschedule_orders_async(OrdersForRescheduling)
-	 %   end;		    
+	{reschedule, OrdersForRescheduling} -> %don't know how smart this realy is
+	    case OrdersForRescheduling of
+		all ->
+		    OrderList = get_order_list(Orders),
+		    FilterCommand = fun(Order) ->
+					    if 
+						Order#order.direction == command -> false;
+						Order#order.direction == up -> true;
+						Order#order.direction == down -> true
+					    end
+				    end,
+		    OrderListWithoutCommand = lists:filter(FilterCommand, OrderList),
+		    RescheduleOrder = fun(Order) -> schedule_order_async(Order, ?SCHEDULING_TIMEOUT) end,
+		    lists:foreach(RescheduleOrder, OrderListWithoutCommand)
+	    end,
+	    loop(Orders);
 	{request_bid, Floor, Direction, Caller} ->
 	    Price = request_bid(Floor, Direction), % this may cause deadlock if request bid fucks up
 	    Caller ! {bid_price, Price, self()},
@@ -217,6 +225,9 @@ is_in_orders(Orders, Order, HandlerNode) ->
 	(Order#order.direction == up) or (Order#order.direction == down) ->
 	    dict:is_key(Order, Orders)
     end.
+
+get_order_list(Orders) -> %not defined which command buttons it will return, please improve
+    dict:fetch_keys(Orders).
 	
 %Function(Order, Distributer)
 foreach_order(Orders, Function) -> % this one might be broke, is it defined how many times command orders will be done?
