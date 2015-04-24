@@ -2,8 +2,6 @@
 %-export([start/1]).
 -compile(export_all).
 
--define(NUMBER_OF_FLOORS, 4). %should maybe be in other place?
--define(BUTTON_TYPES, [up, down, command]). %should maybe be some other place?
 
 
 start(ElevatorType) ->
@@ -73,14 +71,20 @@ driver_manager() ->
     driver_manager().
 
 button_light_manager_init() ->
-    timer:sleep(100),
+    timer:sleep(300),
     button_light_manager().
 button_light_manager() ->
     SetLightFunction = fun(Floor, Direction) ->
-			       elev_driver:set_button_lamp(Floor, Direction, order_storage:is_order(Floor, Direction)) % hard line to grasp
+			       ButtonState = case order_storage:is_order(Floor, Direction) of
+						 true ->
+						     on;
+						 false ->
+						     off
+					     end,
+			       elev_driver:set_button_lamp(Floor, Direction, ButtonState)
 		       end,	 
     
-    foreach_button(SetLightFunction),
+    elev_driver:foreach_button(SetLightFunction), % not very nice
     timer:sleep(200),
     button_light_manager().
 
@@ -102,49 +106,3 @@ queue_manager() ->
 	    order_storage:remove_order(Floor, Direction)
     end,
     queue_manager().
-
-		
-
-
-%% Helper functions (should maybe not be helper functions in this module?)
-%%%%%%%%%%%%%%%%%%%%%%%
-
-%Fun(Floor, Direction)
-foreach_button(Fun) -> % This is somewhat a mess, atleast make better names for Fun and F and shizzle. Consider to rewrite.
-    TopFloorButtonTypes = lists:delete(up, ?BUTTON_TYPES),
-    BottomFloorButtonTypes = lists:delete(down, ?BUTTON_TYPES),
-    OtherFloorButtonTypes = ?BUTTON_TYPES,
-    
-    ForEachDirection = fun(F, Floor) -> %F(Direction)
-			       if
-				   Floor == 0 ->
-				       lists:foreach(F, BottomFloorButtonTypes);
-				   Floor == ?NUMBER_OF_FLOORS-1 ->
-				       lists:foreach(F, TopFloorButtonTypes);
-				   (Floor > 0) and (Floor =< ?NUMBER_OF_FLOORS-1) ->
-				       lists:foreach(F, OtherFloorButtonTypes)
-			       end
-		       end,
-
-    DoFunForEachDirection = fun(Floor) ->
-				    ForEachDirection(fun(Direction) -> Fun(Floor, Direction) end, Floor)
-			    end,
-
-    foreach_floor(DoFunForEachDirection).
-			  
-    
-    
-%F(Floor)
-foreach_floor(F) -> %should maybe (probably) me moved to somewhere else
-    FloorIterator = fun(FloorIterator, Floor) ->
-			    if 
-				Floor == 0 ->
-				    F(Floor);
-				(Floor > 0) and (Floor =< ?NUMBER_OF_FLOORS-1) ->
-				    F(Floor),
-				    FloorIterator(FloorIterator, Floor-1)
-			    end
-		    end,
-    
-    FloorIterator(FloorIterator, ?NUMBER_OF_FLOORS-1),
-    ok.

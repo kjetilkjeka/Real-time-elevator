@@ -1,187 +1,62 @@
 #include "elev.h"
-#include <unistd.h>
-#include <stdint.h>
-
-typedef uint8_t byte;
-
-int read_cmd(byte *buf);
-int write_cmd(byte *buf, int len);
-int read_exact(byte *buf, int len);
-int write_exact(byte *buf, int len);
-
-void poll_button_signals();
-void poll_floor_sensors();
-
-int read_cmd(byte *buf)
-{
-  int len;
-
-  if (read_exact(buf, 2) != 2)
-    return(-1);
-  len = (buf[0] << 8) | buf[1];
-  return read_exact(buf, len);
-}
-
-int write_cmd(byte *buf, int len)
-{
-  byte li;
-
-  li = (len >> 8) & 0xff;
-  write_exact(&li, 1);
-  
-  li = len & 0xff;
-  write_exact(&li, 1);
-
-  return write_exact(buf, len);
-}
-
-int read_exact(byte *buf, int len)
-{
-  int i, got=0;
-
-  do {
-    if ((i = read(0, buf+got, len-got)) <= 0)
-      return(i);
-    got += i;
-  } while (got<len);
-
-  return(len);
-}
-
-int write_exact(byte *buf, int len)
-{
-  int i, wrote = 0;
-
-  do {
-    if ((i = write(1, buf+wrote, len-wrote)) <= 0)
-      return (i);
-    wrote += i;
-  } while (wrote<len);
-
-  return (len);
-}
+#include "elev_port.h"
+#include "erl_communication.h"
 
 
 int main() 
 {
-  byte buf[100];
 
 
   while (1) {
+      byte command_buffer[MAX_COMMAND_SIZE];
+      byte result[1];
 
-      if(read_cmd(buf) > 0){
-
-	  switch(buf[0]){
-	  case(1):
-	      elev_init(buf[1]);
+      if(read_cmd(command_buffer) > 0){
+	  
+	  byte command = command_buffer[0];
+	  switch(command){
+	  case(INIT_COMMAND):
+	      elev_init(command_buffer[1]);
+	      result[0] = 0;
 	      break;
-	  case(2):
-	      elev_set_motor_direction(buf[1]);
+	  case(SET_MOTOR_DIRECTION_COMMAND):
+	      elev_set_motor_direction(command_buffer[1]);
+	      result[0] = 0;
 	      break;
-	  case(3):
-	      elev_set_door_open_lamp(buf[1]);
+	  case(SET_DOOR_OPEN_LAMP_COMMAND):
+	      elev_set_door_open_lamp(command_buffer[1]);
+	      result[0] = 0;
 	      break;
-	  case(4):
-	      buf[0] = elev_get_obstruction_signal();
-	      write_cmd(buf, 1);
+	  case(GET_OBSTRUCTION_SIGNAL_COMMAND):
+	      result[0] = elev_get_obstruction_signal();
 	      break;
-	  case(5):
-	      buf[0] = elev_get_stop_signal();
-	      write_cmd(buf, 1);
+	  case(GET_STOP_SIGNAL_COMMAND):
+	      result[0] = elev_get_stop_signal();
 	      break;
-	  case(6):
-	      elev_set_stop_lamp(buf[1]);
+	  case(SET_STOP_LAMP_COMMAND):
+	      elev_set_stop_lamp(command_buffer[1]);
+	      result[0] = 0;
 	      break;
-	  case(7):
-	      buf[0] = elev_get_floor_sensor_signal();
-	      write_cmd(buf, 1);
+	  case(GET_FLOOR_SENSOR_SIGNAL_COMMAND):
+	      result[0] = elev_get_floor_sensor_signal();
 	      break;
-	  case(8):
-	      elev_set_floor_indicator(buf[1]);
+	  case(SET_FLOOR_INDICATION_COMMAND):
+	      elev_set_floor_indicator(command_buffer[1]);
+	      result[0] = 0;
 	      break;
-	      /* case(9): */
-	      /* 	  res = elev_get_button_signal(buf[1], buf[2]); */
-	      /* 	  break; */
-	  case(10):
-	      elev_set_button_lamp(buf[1], buf[2], buf[3]);
-	      break;	  
-	  case(11):
-	      poll_button_signals();
+	  case(GET_BUTTON_SIGNAL_COMMAND):
+	      result[0] = elev_get_button_signal(command_buffer[1], command_buffer[2]);
 	      break;
-	  case(12):
-	      poll_floor_sensors();
-
+	  case(SET_BUTTON_LAMP_COMMAND):
+	      elev_set_button_lamp(command_buffer[1], command_buffer[2], command_buffer[3]);
+	      result[0] = 0;
+	      break;
 	  }
+	  write_cmd(result, 1);
       }
       
 
   }
 
   return 0;
-}
-
-
-void poll_floor_sensors()
-{
-    byte buf[100];
-
-    static int previousFloor;
-
-    int newFloor = elev_get_floor_sensor_signal();
-
-    buf[0] = 12;
-
-    if(newFloor != -1 && newFloor != previousFloor){
-	buf[1] = newFloor;
-	write_cmd(buf, 2);
-    }
-    
-    previousFloor = newFloor;
-
-}
-
-
-void poll_button_signals()
-{
-    static int previousUp[N_FLOORS];
-    static int previousDown[N_FLOORS];
-    static int previousCommand[N_FLOORS];
-    
-    byte buf[100];
-
-
-
-    for(int i = 0; i < N_FLOORS; i++) // poller masse, fix
-    {
-	buf[0] = 11;
-
-	if(i != N_FLOORS-1){
-	    int up = elev_get_button_signal(BUTTON_CALL_UP, i);
-	    if(up && !previousUp[i]){
-		buf[1] = 0;
-		buf[2] = i;
-		write_cmd(buf, 3);
-	    }
-	    previousUp[i] = up;
-	}
-	
-	if(i != 0){
-	    int down = elev_get_button_signal(BUTTON_CALL_DOWN, i);
-	    if(down && !previousDown[i]){
-		buf[1] = 1;
-		buf[2] = i;
-		write_cmd(buf, 3);
-	    }
-	    previousDown[i] = down;
-	}
-	
-	int command = elev_get_button_signal(BUTTON_COMMAND, i);
-	if(command && previousCommand[i]){
-	    buf[1] = 2;
-	    buf[2] = i;
-	    write_cmd(buf, 3);
-	}
-	previousCommand[i] = command;
-      }
-   
 }
