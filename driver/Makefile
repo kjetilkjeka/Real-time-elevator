@@ -8,7 +8,7 @@ CFLAGS = -g -std=c99 -Wall
 LDFLAGS = -lcomedi -pthread -lm -lerl_interface -lei -lnsl
 
 # list of sources
-ELEVSRC = elev_port.c elev.c io.c
+ELEVSRC = elev_port.c elev.c io.c erl_communication.c
 
 # program executable file name.
 TARGET = elev_port
