@@ -1,8 +1,32 @@
 #include <unistd.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <sys/time.h>
+
 
 #include "erl_communication.h"
 
+bool wait_for_data(int timeoutMS)
+{
+    fd_set rfds;
+    struct timeval tv;
+    int retval;
+
+    /* Watch stdin (fd 0) to see when it has input. */
+    FD_ZERO(&rfds);
+    FD_SET(0, &rfds);
+    
+    /* Wait up to five seconds. */
+    tv.tv_sec = timeoutMS/1000;
+    tv.tv_usec = (timeoutMS%1000)*1000;
+    
+    retval = select(1, &rfds, NULL, NULL, &tv);
+    /* Don't rely on the value of tv now! */
+    if(retval > 0)
+	 return true;
+      
+     return false;
+}
 
 int read_cmd(byte *buf)
 {

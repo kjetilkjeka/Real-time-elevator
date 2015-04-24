@@ -10,6 +10,13 @@ int main()
   while (1) {
       byte command_buffer[MAX_COMMAND_SIZE];
       byte result[1];
+      
+      if(!wait_for_data(400))
+      {
+	  elev_set_motor_direction(0);
+	  return 0;
+      }
+      
 
       if(read_cmd(command_buffer) > 0){
 	  
