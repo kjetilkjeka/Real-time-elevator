@@ -65,6 +65,7 @@ driver_manager() ->
 	{new_order, Direction, Floor} ->
 	    order_storage:add_order(Floor, Direction);  % this schedule event can block floor_reached
 	{floor_reached, Floor} ->
+	    elev_driver:set_floor_indicator(Floor),
 	    fsm:event_floor_reached(fsm),
 	    queue:floor_reached(queue, Floor)
     end,
