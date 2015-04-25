@@ -22,10 +22,20 @@ start(ElevatorType) ->
     
     QueueManagerPID = spawn(fun() -> queue_manager() end),
     QueuePID = queue:start(QueueManagerPID),
-    register(queue, QueuePID).
+    register(queue, QueuePID),
     
+    PlausibilityCheckManager = spawn(fun() -> plausibility_check_manager() end),
+    PlausibilityCheckerPid = plausibility_checks:start_travel_time_plausibility_check(PlausibilityCheckManager),
+    register(plausibilityChecker, PlausibilityCheckerPid).
+   
     
 
+plausibility_check_manager() ->
+    receive 
+	{plausibility_check_failed, _Check} ->
+	    io:format("plausibility check failed")
+    end,
+    plausibility_check_manager().
 
 
 
@@ -42,12 +52,15 @@ fsm_manager() ->
 	    Direction = queue:get_next_direction(queue),
 	    Caller ! {direction, response, Direction};
 	{motor, up} ->
+	    plausibility_checks:motor_started(plausibilityChecker),
 	    elev_driver:set_motor_direction(up),
 	    queue:floor_left(queue, up);
 	{motor, down} ->
+	    plausibility_checks:motor_started(plausibilityChecker),
 	    elev_driver:set_motor_direction(down),
 	    queue:floor_left(queue, down);
 	{motor, stop} ->
+	    plausibility_checks:motor_stopped(plausibilityChecker),
 	    elev_driver:set_motor_direction(stop);
 	{doors, open} ->
 	    queue:make_stop(queue),
