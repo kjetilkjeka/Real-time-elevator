@@ -281,7 +281,8 @@ start_topology_change_detector() ->
 		  
 
 members_added(_MembersAdded) ->
-    do_nothing.
+    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME), %do check if it's on same node
+    ClosestDistributer ! {reschedule, all}.
 
 members_dissapered(_MembersDissapered) ->
     ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME), %do check if it's on same node
