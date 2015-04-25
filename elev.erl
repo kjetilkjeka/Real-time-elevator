@@ -12,21 +12,29 @@ start(ElevatorType) ->
     register(order_storage, OrderStoragePID),
     
     DriverManagerPID = spawn(fun() -> driver_manager_init() end),
-    FsmManagerPid = spawn(fun() -> fsm_manager_init() end),
-
     elev_driver:start(DriverManagerPID, ElevatorType),
-    FsmPID = fsm:start(FsmManagerPid),
+
+    FsmManagerPID = spawn(fun() -> fsm_manager_init() end),
+    FsmPID = fsm:start(FsmManagerPID),
     register(fsm, FsmPID),
     
-    spawn(fun() -> button_light_manager_init() end),
+    ButtonLightManagerPID = spawn(fun() -> button_light_manager_init() end),
     
     QueueManagerPID = spawn(fun() -> queue_manager() end),
     QueuePID = queue:start(QueueManagerPID),
     register(queue, QueuePID),
     
     PlausibilityCheckManager = spawn(fun() -> plausibility_check_manager() end),
-    PlausibilityCheckerPid = plausibility_checks:start_travel_time_plausibility_check(PlausibilityCheckManager),
-    register(plausibilityChecker, PlausibilityCheckerPid).
+    PlausibilityCheckerPID = plausibility_checks:start_travel_time_plausibility_check(PlausibilityCheckManager),
+    register(plausibilityChecker, PlausibilityCheckerPID),
+    
+
+    OrderStorageManagerPID ! init_completed,
+    FsmManagerPID ! init_completed,
+    DriverManagerPID ! init_completed,
+    ButtonLightManagerPID ! init_completed,
+    QueueManagerPID ! init_completed.
+
    
     
 
@@ -40,9 +48,10 @@ plausibility_check_manager() ->
 
 
 
-fsm_manager_init() -> % dirty hack, plz fix
-    timer:sleep(100), % wait for driver initalization
-    queue:floor_reached(queue, 0), % dumb hack
+fsm_manager_init() ->
+    receive init_completed ->
+	    ok
+    end,
     fsm_manager().
 fsm_manager() ->
     receive
@@ -72,8 +81,10 @@ fsm_manager() ->
     end,
     fsm_manager().
 
-driver_manager_init() -> % more dirty tricks
-    timer:sleep(100),
+driver_manager_init() ->
+    receive init_completed ->
+	    ok
+    end,
     driver_manager().
 driver_manager() ->
     receive
@@ -87,7 +98,9 @@ driver_manager() ->
     driver_manager().
 
 button_light_manager_init() ->
-    timer:sleep(300),
+    receive init_completed ->
+	    ok
+    end,
     button_light_manager().
 button_light_manager() ->
     SetLightFunction = fun(Floor, Direction) ->
@@ -104,7 +117,11 @@ button_light_manager() ->
     timer:sleep(200),
     button_light_manager().
 
-
+order_storage_manager_init() ->
+    receive init_completed ->
+	    ok
+    end,
+    order_storage_manager().
 order_storage_manager() ->    
     receive
 	{bid_request, Floor, Direction, Caller} ->
@@ -116,6 +133,11 @@ order_storage_manager() ->
     
     order_storage_manager().
 
+queue_manager_init() ->
+    receive init_completed ->
+	    ok
+    end,
+    queue_manager().
 queue_manager() ->			    
     receive
 	{order_served, Floor, Direction} ->
