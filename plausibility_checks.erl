@@ -42,7 +42,8 @@ travel_time_plausibility() ->
 		    ok
 	    after
 		?MAX_TRAVEL_TIME ->
-		    plausibility_check_event(get(listener), travel_time)
+		    plausibility_check_event(get(listener), travel_time),
+		    self() ! motor_started
 	    end
     end,
     travel_time_plausibility().
