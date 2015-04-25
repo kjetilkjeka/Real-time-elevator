@@ -33,7 +33,8 @@ start(ElevatorType) ->
 plausibility_check_manager() ->
     receive 
 	{plausibility_check_failed, _Check} ->
-	    io:format("plausibility check failed")
+	    lists:foreach(fun(Node) -> erlang:disconnect_node(Node) end, nodes()),
+	    io:format("plausibility check failed ~n")
     end,
     plausibility_check_manager().
 
