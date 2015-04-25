@@ -4,7 +4,7 @@
 
 -record(order, {floor, direction}).
 -record(schedule, {orders = [], elevator_next_floor, elevator_direction=stop}). 
-% next_floor is current or next floor, not current or last, maybe rename variable to make this clearer
+% #schedule.elevator_next_floor is the floor the elevator will pass next, or if it's not moving then its the current floor.
 
 -define(NUMBER_OF_FLOORS, 4).
 -define(TURN_COST, ?NUMBER_OF_FLOORS).
