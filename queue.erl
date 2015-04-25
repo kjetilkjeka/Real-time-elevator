@@ -194,8 +194,13 @@ update_direction_and_increment_floor(Schedule, down) ->
     Schedule#schedule{elevator_next_floor = Schedule#schedule.elevator_next_floor - 1, elevator_direction = down}.
    
 
-add_order_to_schedule(Schedule, Order) -> % please implement guard for several similar orders, and maybe for unvalid directions ? 
-    Schedule#schedule{orders=[Order|Schedule#schedule.orders]}.
+add_order_to_schedule(Schedule, Order) -> 
+    case lists:member(Order, Schedule#schedule.orders) of 
+	true ->
+	    Schedule;
+	false ->
+	    Schedule#schedule{orders=[Order|Schedule#schedule.orders]}
+    end.
 
 remove_order_from_schedule(Schedule, Order) -> % should possibly remove all identical orders
     FilterListCondition = fun(Element) ->
