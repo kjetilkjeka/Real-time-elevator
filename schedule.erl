@@ -233,7 +233,7 @@ get_cheapest_order_with_cost_from_schedule(Schedule) ->
 						  Order#order.floor,
 						  Order#order.direction), Order}
 				end,
-    CostOrderList = foreach_order(IncludeCostInListFunction, Schedule#schedule.orders),
+    CostOrderList = lists:map(IncludeCostInListFunction, Schedule#schedule.orders),
     {_OrderCost, _CheapestOrder} = lists:min(CostOrderList).
 
 
@@ -271,12 +271,3 @@ calculate_cost(ElevatorNextFloor, ElevatorDirection, OrderFloor, OrderDirection)
 	false ->
 	    abs(OrderFloor - ElevatorNextFloor)
     end.
-
-foreach_order(_Function, []) -> %% does the built in function map do this?
-    [];
-foreach_order(Function, [LastOrder]) ->
-    [Function(LastOrder)];
-foreach_order(Function, OrderList) ->
-    [Head|Tail] = OrderList,
-    [Function(Head)|foreach_order(Function, Tail)].
-    
