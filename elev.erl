@@ -46,6 +46,8 @@ fsm_manager_init() -> % dirty hack, plz fix
     fsm_manager().
 fsm_manager() ->
     receive
+	{init, started} ->
+	    elev_driver:set_motor_direction(up);
 	{init, completed} ->
 	    ok;
 	{direction, request, Caller} ->
