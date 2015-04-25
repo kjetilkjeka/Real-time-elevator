@@ -37,7 +37,7 @@ fsm_manager_init() -> % dirty hack, plz fix
 fsm_manager() ->
     receive
 	{init, completed} ->
-	    queue:make_stop(queue);
+	    ok;
 	{direction, request, Caller} ->
 	    Direction = queue:get_next_direction(queue),
 	    Caller ! {direction, response, Direction};
