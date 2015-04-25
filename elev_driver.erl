@@ -59,7 +59,7 @@ loop(Port, Listener) ->
 		{Port, closed} ->
 		    exit(normal)
 	    end;
-	{'EXIT', Port, Reason} ->
+	{'EXIT', Port, _Reason} ->
 	    exit(port_terminated)
     end.
 
