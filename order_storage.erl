@@ -307,6 +307,6 @@ network_topology_change_detector(OldMembers) ->
 	    members_dissapered(MembersDissapered)
     end,
     
-    timer:sleep(10000),
+    timer:sleep(400),
     network_topology_change_detector(MembersNow).
 
