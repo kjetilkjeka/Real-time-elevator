@@ -1,9 +1,10 @@
 -module(schedule).
--compile(export_all).
-%-export(add_order/2, get/1, remove/2, get_next_order/2]).
+-export([start/1]).
+-export([add_order/3, get_next_direction/1, floor_reached/2, floor_left/2, stopped_at_floor/1, get_order_cost/3]).
 
 -record(order, {floor, direction}).
--record(schedule, {orders = [], elevator_next_floor, elevator_direction}). % next_floor is current or next floor, not current or last, maybe rename variable to make this clearer
+-record(schedule, {orders = [], elevator_next_floor, elevator_direction=stop}). 
+% next_floor is current or next floor, not current or last, maybe rename variable to make this clearer
 
 -define(NUMBER_OF_FLOORS, 4).
 -define(TURN_COST, ?NUMBER_OF_FLOORS).
@@ -13,14 +14,14 @@
 %% module interface
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-add(Pid, OrderFloor, OrderDirection) ->
+add_order(Pid, OrderFloor, OrderDirection) ->
     Pid ! {add_order, OrderFloor, OrderDirection, self()}, 
     receive
 	ok ->
 	    ok
     end.
 
-remove(Pid, OrderFloor, OrderDirection) ->
+remove_order(Pid, OrderFloor, OrderDirection) ->
     Pid ! {remove_order, OrderFloor, OrderDirection, self()},
     receive
 	ok ->
@@ -48,8 +49,8 @@ floor_left(Pid, Direction) ->
 	    ok
     end.
 
-make_stop(Pid) ->
-    Pid ! {make_stop, self()},
+stopped_at_floor(Pid) ->
+    Pid ! {stopped_at_floor, self()},
     receive
 	ok ->
 	    ok
@@ -80,12 +81,12 @@ order_served(Floor, Direction) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 start(Listener) ->
-    spawn(fun() -> init(Listener) end). %% bad initial value hack, please fix later
+    spawn(fun() -> init(Listener) end).
     
 
 init(Listener) ->
     put(listener, Listener),
-    loop(#schedule{elevator_next_floor = 0, elevator_direction = stop}). % this is a dirty hack. Should be fixed by initializing properly
+    loop(#schedule{elevator_next_floor = 0}).
 
 loop(Schedule) ->
     receive
@@ -96,7 +97,7 @@ loop(Schedule) ->
 	    Cost = CostWithOrder - CostWithoutOrder,
 	    Caller ! {cost, Cost},
 	    loop(Schedule);
-	{make_stop, Caller} ->
+	{stopped_at_floor, Caller} ->
 	    NewSchedule = update_schedule_at_stop(Schedule),
 	    serve_orders(NewSchedule, Schedule),
 	    Caller ! ok,
@@ -135,10 +136,10 @@ serve_orders(NewSchedule, OldSchedule) ->
     ServeOrderFunction = fun(Order) -> order_served(Order#order.floor, Order#order.direction) end,
     lists:foreach(ServeOrderFunction, RemovedOrders).
 
-calculate_schedule_cost(Schedule) when Schedule#schedule.orders == [] -> % correct under the assumption that order cost is linear
+calculate_schedule_cost(Schedule) when Schedule#schedule.orders == [] ->
     0;
 calculate_schedule_cost(Schedule) ->
-    {OrderCost, CheapestOrder} = get_cheapest_order_from_schedule(Schedule),
+    {OrderCost, CheapestOrder} = get_cheapest_order_with_cost_from_schedule(Schedule),
     ScheduleWithoutCheapestOrder = remove_order_from_schedule(Schedule, CheapestOrder),
     OrderDirection = CheapestOrder#order.direction,
     NewDirection = case OrderDirection of
@@ -152,8 +153,7 @@ calculate_schedule_cost(Schedule) ->
     
 		
 
-% Removes all orders at floor, should possibly be extended to be more precice
-update_schedule_at_stop(Schedule) -> % and update direction, realy hard function to grasp, that's not good
+update_schedule_at_stop(Schedule) ->
     ElevatorFloor = Schedule#schedule.elevator_next_floor,
     ScheduleWithoutCommand = remove_order_from_schedule(Schedule, #order{floor = ElevatorFloor, direction = command}),
     
@@ -161,8 +161,8 @@ update_schedule_at_stop(Schedule) -> % and update direction, realy hard function
 		      ScheduleWithoutCommand#schedule.orders == [] ->
 			  ScheduleWithoutCommand#schedule{elevator_direction = stop};	
 		      ScheduleWithoutCommand#schedule.orders /= [] ->
-			  {_LeastCost, CheapestOrder} = get_cheapest_order_from_schedule(ScheduleWithoutCommand),
-			  io:format("ElevatorFloor: ~w, CheaestFloor: ~w ~n", [ElevatorFloor, CheapestOrder#order.floor]),
+			  {_OrderCost, CheapestOrder} = get_cheapest_order_with_cost_from_schedule(ScheduleWithoutCommand),
+			  io:format("ElevatorFloor: ~w, CheapestFloor: ~w ~n", [ElevatorFloor, CheapestOrder#order.floor]),
 			  if  % see if this can be solved more elegantely, (without nested ifs)
 			      ElevatorFloor /= CheapestOrder#order.floor ->
 				  ScheduleWithoutCommand;
@@ -202,7 +202,7 @@ add_order_to_schedule(Schedule, Order) ->
 	    Schedule#schedule{orders=[Order|Schedule#schedule.orders]}
     end.
 
-remove_order_from_schedule(Schedule, Order) -> % should possibly remove all identical orders
+remove_order_from_schedule(Schedule, Order) ->
     FilterListCondition = fun(Element) ->
 				    if
 					Element == Order ->
@@ -221,13 +221,12 @@ get_next_direction_from_schedule(Schedule) ->
 	[] ->
 	    stop;
 	_OrderList ->
-	    {_LeastCost, CheapestOrder} = get_cheapest_order_from_schedule(Schedule),	    
+	    {_OrderCost, CheapestOrder} = get_cheapest_order_with_cost_from_schedule(Schedule),	    
 	    direction(Schedule#schedule.elevator_next_floor, CheapestOrder#order.floor)
     end.
 
 
-% what happend if orderLIst is empy?	
-get_cheapest_order_from_schedule(Schedule) -> % maybe degrade to helper, maybe take orderlist and return order? Maybe do this in cost module?
+get_cheapest_order_with_cost_from_schedule(Schedule) ->
     IncludeCostInListFunction = fun(Order) ->
 					{get_cost(Schedule#schedule.elevator_next_floor, 
 						  Schedule#schedule.elevator_direction,
@@ -235,16 +234,12 @@ get_cheapest_order_from_schedule(Schedule) -> % maybe degrade to helper, maybe t
 						  Order#order.direction), Order}
 				end,
     CostOrderList = foreach_order(IncludeCostInListFunction, Schedule#schedule.orders),
-    {_LeastCost, _CheapestOrder} = lists:min(CostOrderList). %%%%%%%%% THIS IS REALY TERRIBLE, RETURN VALUE DOESN'T CORRESPOND TO FUNCTION NAME FIX !!!!!!!!!!!!!!!!!!!!!!!!!
+    {_OrderCost, _CheapestOrder} = lists:min(CostOrderList).
 
 
 
 %%% helper functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-other_direction(up) -> down;
-other_direction(down) -> up.
-
 
 direction(ElevatorFloor, OrderFloor) when ElevatorFloor == OrderFloor->
     open;
@@ -268,7 +263,7 @@ must_turn(ElevatorNextFloor, up, OrderFloor, down) when OrderFloor =< ElevatorNe
 must_turn(ElevatorNextFloor, down, OrderFloor, up) when OrderFloor >= ElevatorNextFloor -> true;
 must_turn(ElevatorNextFloor, down, OrderFloor, up) when OrderFloor < ElevatorNextFloor -> false.
 
-% maybe make and move to "cost" module?
+
 get_cost(ElevatorNextFloor, ElevatorDirection, OrderFloor, OrderDirection) -> %% should probably not be named "get" since it's not a getter
     case must_turn(ElevatorNextFloor, ElevatorDirection, OrderFloor, OrderDirection) of
 	true ->

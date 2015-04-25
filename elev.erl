@@ -73,7 +73,7 @@ fsm_manager() ->
 	    plausibility_checks:motor_stopped(plausibilityChecker),
 	    elev_driver:set_motor_direction(stop);
 	{doors, open} ->
-	    schedule:make_stop(schedule),
+	    schedule:stopped_at_floor(schedule),
 	    elev_driver:set_door_open_lamp(on);
 	{doors, close} ->
 	    elev_driver:set_door_open_lamp(off)
@@ -126,7 +126,7 @@ order_storage_manager() ->
 	{bid_request, Floor, Direction, Caller} ->
 	    Caller ! {bid_price, schedule:get_order_cost(schedule, Floor, Direction)};
 	{handle_order, Floor, Direction, _Caller} ->
-	    schedule:add(schedule, Floor, Direction),
+	    schedule:add_order(schedule, Floor, Direction),
 	    fsm:event_new_order(fsm)
     end,
     
