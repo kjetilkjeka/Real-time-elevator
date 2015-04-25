@@ -19,9 +19,9 @@ start(ElevatorType) ->
     
     ButtonLightManagerPID = spawn(fun() -> button_light_manager_init() end),
     
-    QueueManagerPID = spawn(fun() -> queue_manager_init() end),
-    QueuePID = queue:start(QueueManagerPID),
-    register(queue, QueuePID),
+    ScheduleManagerPID = spawn(fun() -> schedule_manager_init() end),
+    SchedulePID = schedule:start(ScheduleManagerPID),
+    register(schedule, SchedulePID),
     
     PlausibilityCheckManager = spawn(fun() -> plausibility_check_manager() end),
     PlausibilityCheckerPID = plausibility_checks:start_travel_time_plausibility_check(PlausibilityCheckManager),
@@ -32,7 +32,7 @@ start(ElevatorType) ->
     FsmManagerPID ! init_completed,
     DriverManagerPID ! init_completed,
     ButtonLightManagerPID ! init_completed,
-    QueueManagerPID ! init_completed.
+    ScheduleManagerPID ! init_completed.
 
    
     
@@ -59,21 +59,21 @@ fsm_manager() ->
 	{init, completed} ->
 	    ok;
 	{direction, request, Caller} ->
-	    Direction = queue:get_next_direction(queue),
+	    Direction = schedule:get_next_direction(schedule),
 	    Caller ! {direction, response, Direction};
 	{motor, up} ->
 	    plausibility_checks:motor_started(plausibilityChecker),
 	    elev_driver:set_motor_direction(up),
-	    queue:floor_left(queue, up);
+	    schedule:floor_left(schedule, up);
 	{motor, down} ->
 	    plausibility_checks:motor_started(plausibilityChecker),
 	    elev_driver:set_motor_direction(down),
-	    queue:floor_left(queue, down);
+	    schedule:floor_left(schedule, down);
 	{motor, stop} ->
 	    plausibility_checks:motor_stopped(plausibilityChecker),
 	    elev_driver:set_motor_direction(stop);
 	{doors, open} ->
-	    queue:make_stop(queue),
+	    schedule:make_stop(schedule),
 	    elev_driver:set_door_open_lamp(on);
 	{doors, close} ->
 	    elev_driver:set_door_open_lamp(off)
@@ -92,7 +92,7 @@ driver_manager() ->
 	{floor_reached, Floor} ->
 	    elev_driver:set_floor_indicator(Floor),
 	    fsm:event_floor_reached(fsm),
-	    queue:floor_reached(queue, Floor)
+	    schedule:floor_reached(schedule, Floor)
     end,
     driver_manager().
 
@@ -124,22 +124,22 @@ order_storage_manager_init() ->
 order_storage_manager() ->    
     receive
 	{bid_request, Floor, Direction, Caller} ->
-	    Caller ! {bid_price, queue:get_order_cost(queue, Floor, Direction)};
+	    Caller ! {bid_price, schedule:get_order_cost(schedule, Floor, Direction)};
 	{handle_order, Floor, Direction, _Caller} ->
-	    queue:add(queue, Floor, Direction),
+	    schedule:add(schedule, Floor, Direction),
 	    fsm:event_new_order(fsm)
     end,
     
     order_storage_manager().
 
-queue_manager_init() ->
+schedule_manager_init() ->
     receive init_completed ->
 	    ok
     end,
-    queue_manager().
-queue_manager() ->			    
+    schedule_manager().
+schedule_manager() ->			    
     receive
 	{order_served, Floor, Direction} ->
 	    order_storage:remove_order(Floor, Direction)
     end,
-    queue_manager().
+    schedule_manager().

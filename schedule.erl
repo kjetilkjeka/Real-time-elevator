@@ -1,4 +1,4 @@
--module(queue).
+-module(schedule).
 -compile(export_all).
 %-export(add_order/2, get/1, remove/2, get_next_order/2]).
 
