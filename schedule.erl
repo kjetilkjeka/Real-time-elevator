@@ -122,7 +122,7 @@ loop(Schedule) ->
 	    Caller ! ok,
 	    loop(NewSchedule);
 	{floor_left, Direction, Caller} ->
-	    NewSchedule = update_direction_and_increment_floor(Schedule, Direction),
+	    NewSchedule = update_schedule_when_leaving_floor(Schedule, Direction),
 	    Caller ! ok,
 	    loop(NewSchedule)
     end.
@@ -181,9 +181,9 @@ update_schedule_at_stop(Schedule) when Schedule#schedule.orders /= [] ->
 change_next_floor_in_schedule(Schedule, ElevatorNextFloor) ->
     Schedule#schedule{elevator_next_floor = ElevatorNextFloor}.
 
-update_direction_and_increment_floor(Schedule, up) -> % should probably update instead of increment, also shorter more precise name is better
+update_schedule_when_leaving_floor(Schedule, up) ->
     Schedule#schedule{elevator_next_floor = Schedule#schedule.elevator_next_floor + 1, elevator_direction = up};
-update_direction_and_increment_floor(Schedule, down) ->
+update_schedule_when_leaving_floor(Schedule, down) ->
     Schedule#schedule{elevator_next_floor = Schedule#schedule.elevator_next_floor - 1, elevator_direction = down}.
    
 
