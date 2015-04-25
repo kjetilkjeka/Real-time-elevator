@@ -228,7 +228,7 @@ get_next_direction_from_schedule(Schedule) ->
 
 get_cheapest_order_with_cost_from_schedule(Schedule) ->
     IncludeCostInListFunction = fun(Order) ->
-					{get_cost(Schedule#schedule.elevator_next_floor, 
+					{calculate_cost(Schedule#schedule.elevator_next_floor, 
 						  Schedule#schedule.elevator_direction,
 						  Order#order.floor,
 						  Order#order.direction), Order}
@@ -248,7 +248,7 @@ direction(ElevatorFloor, OrderFloor) when ElevatorFloor < OrderFloor ->
 direction(ElevatorFloor, OrderFloor) when ElevatorFloor > OrderFloor ->
     down.
 
-%must_turn(EleveatorNextFloor, ElevatorDirection, OrderFloor, OrderDirection)
+%must_turn(ElevatorNextFloor, ElevatorDirection, OrderFloor, OrderDirection)
 must_turn(_ElevatorNextFloor, stop, _OrderFloor, _OrderDirection) -> false;
 must_turn(ElevatorNextFloor, up, OrderFloor, up) when OrderFloor >= ElevatorNextFloor -> false;
 must_turn(ElevatorNextFloor, up, OrderFloor, up) when OrderFloor < ElevatorNextFloor -> true;
@@ -264,7 +264,7 @@ must_turn(ElevatorNextFloor, down, OrderFloor, up) when OrderFloor >= ElevatorNe
 must_turn(ElevatorNextFloor, down, OrderFloor, up) when OrderFloor < ElevatorNextFloor -> false.
 
 
-get_cost(ElevatorNextFloor, ElevatorDirection, OrderFloor, OrderDirection) -> %% should probably not be named "get" since it's not a getter
+calculate_cost(ElevatorNextFloor, ElevatorDirection, OrderFloor, OrderDirection) ->
     case must_turn(ElevatorNextFloor, ElevatorDirection, OrderFloor, OrderDirection) of
 	true ->
 	    abs(OrderFloor - ElevatorNextFloor) + ?TURN_COST; 
