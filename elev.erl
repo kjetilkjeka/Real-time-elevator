@@ -1,13 +1,12 @@
 -module(elev).
-%-export([start/1]).
--compile(export_all).
+-export([start/1]).
 
 
 
 start(ElevatorType) ->
     connection_manager:start_auto_discovery(),
     
-    OrderStorageManagerPID = spawn(fun() -> order_storage_manager() end),
+    OrderStorageManagerPID = spawn(fun() -> order_storage_manager_init() end),
     OrderStoragePID = order_storage:start(OrderStorageManagerPID),
     register(order_storage, OrderStoragePID),
     
@@ -20,7 +19,7 @@ start(ElevatorType) ->
     
     ButtonLightManagerPID = spawn(fun() -> button_light_manager_init() end),
     
-    QueueManagerPID = spawn(fun() -> queue_manager() end),
+    QueueManagerPID = spawn(fun() -> queue_manager_init() end),
     QueuePID = queue:start(QueueManagerPID),
     register(queue, QueuePID),
     
@@ -89,7 +88,7 @@ driver_manager_init() ->
 driver_manager() ->
     receive
 	{new_order, Direction, Floor} ->
-	    order_storage:add_order(Floor, Direction);  % this schedule event can block floor_reached
+	    order_storage:add_order(Floor, Direction);
 	{floor_reached, Floor} ->
 	    elev_driver:set_floor_indicator(Floor),
 	    fsm:event_floor_reached(fsm),
@@ -113,7 +112,7 @@ button_light_manager() ->
 			       elev_driver:set_button_lamp(Floor, Direction, ButtonState)
 		       end,	 
     
-    elev_driver:foreach_button(SetLightFunction), % not very nice
+    elev_driver:foreach_button(SetLightFunction),
     timer:sleep(200),
     button_light_manager().
 
@@ -128,7 +127,7 @@ order_storage_manager() ->
 	    Caller ! {bid_price, queue:get_order_cost(queue, Floor, Direction)};
 	{handle_order, Floor, Direction, _Caller} ->
 	    queue:add(queue, Floor, Direction),
-	    fsm:event_new_order(fsm) % maybe queue should do this?
+	    fsm:event_new_order(fsm)
     end,
     
     order_storage_manager().
