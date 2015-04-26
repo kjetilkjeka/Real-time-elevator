@@ -61,7 +61,7 @@ request_bid(Floor, Direction) ->
 	    infitinity
     end.
 
-handle_order(Order) -> % the world might have seen better names than handle_order
+handle_order(Order) ->
     get(listener) ! {handle_order, Order#order.floor, Order#order.direction, self()}.
 
 %% process functions
