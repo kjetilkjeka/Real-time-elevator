@@ -1,4 +1,4 @@
--module(fsm).
+-module(elev_fsm).
 -compile(export_all).
 %-export([start/0, go_direction/1, event_floor_reached/1]).
 

@@ -14,7 +14,7 @@ start(ElevatorType) ->
     elev_driver:start(DriverManagerPID, ElevatorType),
 
     FsmManagerPID = spawn(fun() -> fsm_manager_init() end),
-    FsmPID = fsm:start(FsmManagerPID),
+    FsmPID = elev_fsm:start(FsmManagerPID),
     register(fsm, FsmPID),
     
     ButtonLightManagerPID = spawn(fun() -> button_light_manager_init() end),
@@ -91,7 +91,7 @@ driver_manager() ->
 	    order_storage:add_order(Floor, Direction);
 	{floor_reached, Floor} ->
 	    elev_driver:set_floor_indicator(Floor),
-	    fsm:event_floor_reached(fsm),
+	    elev_fsm:event_floor_reached(fsm),
 	    schedule:floor_reached(schedule, Floor)
     end,
     driver_manager().
@@ -127,7 +127,7 @@ order_storage_manager() ->
 	    Caller ! {bid_price, schedule:get_order_cost(schedule, Floor, Direction)};
 	{handle_order, Floor, Direction, _Caller} ->
 	    schedule:add_order(schedule, Floor, Direction),
-	    fsm:event_new_order(fsm)
+	    elev_fsm:event_new_order(fsm)
     end,
     
     order_storage_manager().

@@ -1,5 +1,5 @@
 {'elev.erl', [{outdir, "ebin"}]}.
-{'fsm.erl', [{outdir, "ebin"}]}.
+{'elev_fsm.erl', [{outdir, "ebin"}]}.
 {'elev_driver.erl', [{outdir, "ebin"}]}.
 {'schedule.erl', [{outdir, "ebin"}]}.
 {'connection_manager.erl', [{outdir, "ebin"}]}.
