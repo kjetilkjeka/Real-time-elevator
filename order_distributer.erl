@@ -6,6 +6,7 @@
 -define(PROCESS_GROUP_NAME, order_distributers).
 -define(DETS_TABLE_NAME, "orders").
 -define(SCHEDULING_TIMEOUT, 5000).
+-define(BID_TIMEOUT_TIME, 3000).
 
 
 %% API
@@ -51,11 +52,13 @@ get_orders() -> %function for debug only
 %% Callbacks
 %%%%%%%%%%%
 
-request_bid(Floor, Direction) -> %this can ofcourse deadlock
+request_bid(Floor, Direction) ->
     get(listener) ! {bid_request, Floor, Direction, self()},
     receive 
 	{bid_price, Price} ->
 	    Price
+    after ?BID_TIMEOUT_TIME ->
+	    infitinity
     end.
 
 handle_order(Order) -> % the world might have seen better names than handle_order
