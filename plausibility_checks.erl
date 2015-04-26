@@ -1,4 +1,6 @@
 -module(plausibility_checks).
+-export([start_travel_time_plausibility_check/1]).
+-export([motor_started/1, motor_stopped/1]).
 -compile(export_all).
 
 -define(MAX_TRAVEL_TIME, 5000).
