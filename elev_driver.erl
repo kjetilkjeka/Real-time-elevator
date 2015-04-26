@@ -1,5 +1,6 @@
 -module(elev_driver).
--compile(export_all).
+-export([start/1]).
+-export([init/1, set_motor_direction/1, set_door_open_lamp/1, set_stop_lamp/1, set_floor_indicator/1, set_button_lamp/3, foreach_button/1]).
 
 -define(NUMBER_OF_FLOORS, 4).
 -define(BUTTON_TYPES, [up, down, command]).
@@ -15,6 +16,34 @@ set_door_open_lamp(State) -> call_port({elev_set_door_open_lamp, State}).
 set_stop_lamp(State) -> call_port({elev_set_stop_lamp, State}).
 set_floor_indicator(Floor) -> call_port({elev_set_floor_indicator, Floor}).
 set_button_lamp(Floor, Direction, State) -> call_port({elev_set_button_lamp, Direction, Floor, State}).
+
+%FunctionForeachButton(Floor, Direction)
+foreach_button(FunctionForeachButton) ->
+
+    %% This function executes a function for each button on the panel.
+    %% Execute ForEachDirection for every floor. Every direction on every floor equals every button.
+    %% ForeachDirectionWrapper is there to make arguments match with the foreach_floor function
+
+    TopFloorButtonTypes = lists:delete(up, ?BUTTON_TYPES),
+    BottomFloorButtonTypes = lists:delete(down, ?BUTTON_TYPES),
+    OtherFloorButtonTypes = ?BUTTON_TYPES,
+    
+    ForeachDirection = fun(FunctionForeachDirection, Floor) -> %FunctionForeachDirection(Direction)
+			       if
+				   Floor == 0 ->
+				       lists:foreach(FunctionForeachDirection, BottomFloorButtonTypes);
+				   Floor == ?NUMBER_OF_FLOORS-1 ->
+				       lists:foreach(FunctionForeachDirection, TopFloorButtonTypes);
+				   (Floor > 0) and (Floor =< ?NUMBER_OF_FLOORS-1) ->
+				       lists:foreach(FunctionForeachDirection, OtherFloorButtonTypes)
+			       end
+		       end,
+
+    ForeachDirectionWrapper = fun(Floor) -> ForeachDirection(fun(Direction) -> FunctionForeachButton(Floor, Direction) end, Floor) end,
+    
+    foreach_floor(ForeachDirectionWrapper).
+			  
+
 
 %% Call backs
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -126,32 +155,6 @@ encode({elev_set_button_lamp, command, Floor, off}) -> [10, 2, Floor, 0].
 %%%%%%%%%%%%%%%%%%%%%%    
 
 
-%FunctionForeachButton(Floor, Direction)
-foreach_button(FunctionForeachButton) ->
-
-    %% This function executes a function for each button on the panel.
-    %% Execute ForEachDirection for every floor. Every direction on every floor equals every button.
-    %% ForeachDirectionWrapper is there to make arguments match with the foreach_floor function
-
-    TopFloorButtonTypes = lists:delete(up, ?BUTTON_TYPES),
-    BottomFloorButtonTypes = lists:delete(down, ?BUTTON_TYPES),
-    OtherFloorButtonTypes = ?BUTTON_TYPES,
-    
-    ForeachDirection = fun(FunctionForeachDirection, Floor) -> %FunctionForeachDirection(Direction)
-			       if
-				   Floor == 0 ->
-				       lists:foreach(FunctionForeachDirection, BottomFloorButtonTypes);
-				   Floor == ?NUMBER_OF_FLOORS-1 ->
-				       lists:foreach(FunctionForeachDirection, TopFloorButtonTypes);
-				   (Floor > 0) and (Floor =< ?NUMBER_OF_FLOORS-1) ->
-				       lists:foreach(FunctionForeachDirection, OtherFloorButtonTypes)
-			       end
-		       end,
-
-    ForeachDirectionWrapper = fun(Floor) -> ForeachDirection(fun(Direction) -> FunctionForeachButton(Floor, Direction) end, Floor) end,
-    
-    foreach_floor(ForeachDirectionWrapper).
-			  
     
     
 %Function(Floor)
