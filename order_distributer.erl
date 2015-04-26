@@ -1,5 +1,6 @@
 -module(order_distributer).
--compile(export_all).
+-export([start/1]).
+-export([add_order/2, remove_order/2, is_order/2]).
 
 -record(order, {floor, direction}).
 
