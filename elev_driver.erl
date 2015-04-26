@@ -1,8 +1,8 @@
 -module(elev_driver).
 -compile(export_all).
 
--define(NUMBER_OF_FLOORS, 4). %should maybe be in other place?
--define(BUTTON_TYPES, [up, down, command]). %should maybe be some other place?
+-define(NUMBER_OF_FLOORS, 4).
+-define(BUTTON_TYPES, [up, down, command]).
 
 -define(POLL_PERIOD, 50).
 
@@ -48,7 +48,7 @@ loop(Port, Listener) ->
     receive
 	{call, Caller, Msg} ->
 	    Port ! {self(), {command, encode(Msg)}},
-	    receive %handle dead port
+	    receive
 		{Port, {data, Data}} ->
 		    Caller ! {self(), Data}
 	    end,
@@ -87,8 +87,9 @@ order_button_poller(Listener, Floor, Direction, LastState) ->
 
 
 
-%% Encoding in same format as elev_port.c
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Encoding and message wrapping for c port
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 call_port(Msg) ->
     driver ! {call, self(), Msg},
     receive 
@@ -119,42 +120,48 @@ encode({elev_set_button_lamp, down, Floor, on}) -> [10, 1, Floor, 1];
 encode({elev_set_button_lamp, down, Floor, off}) -> [10, 1, Floor, 0];
 encode({elev_set_button_lamp, command, Floor, on}) -> [10, 2, Floor, 1];
 encode({elev_set_button_lamp, command, Floor, off}) -> [10, 2, Floor, 0].
-    
 
 
-%Fun(Floor, Direction)
-foreach_button(Fun) -> % This is somewhat a mess, atleast make better names for Fun and F and shizzle. Consider to rewrite.
+%% Helper functions
+%%%%%%%%%%%%%%%%%%%%%%    
+
+
+%FunctionForeachButton(Floor, Direction)
+foreach_button(FunctionForeachButton) ->
+
+    %% This function executes a function for each button on the panel.
+    %% Execute ForEachDirection for every floor. Every direction on every floor equals every button.
+    %% ForeachDirectionWrapper is there to make arguments match with the foreach_floor function
+
     TopFloorButtonTypes = lists:delete(up, ?BUTTON_TYPES),
     BottomFloorButtonTypes = lists:delete(down, ?BUTTON_TYPES),
     OtherFloorButtonTypes = ?BUTTON_TYPES,
     
-    ForEachDirection = fun(F, Floor) -> %F(Direction)
+    ForeachDirection = fun(FunctionForeachDirection, Floor) -> %FunctionForeachDirection(Direction)
 			       if
 				   Floor == 0 ->
-				       lists:foreach(F, BottomFloorButtonTypes);
+				       lists:foreach(FunctionForeachDirection, BottomFloorButtonTypes);
 				   Floor == ?NUMBER_OF_FLOORS-1 ->
-				       lists:foreach(F, TopFloorButtonTypes);
+				       lists:foreach(FunctionForeachDirection, TopFloorButtonTypes);
 				   (Floor > 0) and (Floor =< ?NUMBER_OF_FLOORS-1) ->
-				       lists:foreach(F, OtherFloorButtonTypes)
+				       lists:foreach(FunctionForeachDirection, OtherFloorButtonTypes)
 			       end
 		       end,
 
-    DoFunForEachDirection = fun(Floor) ->
-				    ForEachDirection(fun(Direction) -> Fun(Floor, Direction) end, Floor)
-			    end,
-
-    foreach_floor(DoFunForEachDirection).
+    ForeachDirectionWrapper = fun(Floor) -> ForeachDirection(fun(Direction) -> FunctionForeachButton(Floor, Direction) end, Floor) end,
+    
+    foreach_floor(ForeachDirectionWrapper).
 			  
     
     
-%F(Floor)
-foreach_floor(F) -> %should maybe (probably) me moved to somewhere else
+%Function(Floor)
+foreach_floor(Function) -> 
     FloorIterator = fun(FloorIterator, Floor) ->
 			    if 
 				Floor == 0 ->
-				    F(Floor);
+				    Function(Floor);
 				(Floor > 0) and (Floor =< ?NUMBER_OF_FLOORS-1) ->
-				    F(Floor),
+				    Function(Floor),
 				    FloorIterator(FloorIterator, Floor-1)
 			    end
 		    end,
