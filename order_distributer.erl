@@ -27,12 +27,12 @@ remove_order(Floor, Direction) ->
     AddOrderFunction = fun(OrderDistributorPid) ->
 			       OrderDistributorPid ! {remove_order, Order, node(), Self}
 		       end,
-    foreach_distributer(AddOrderFunction).
+    foreach_member(AddOrderFunction).
 
 
 is_order(Floor, Direction) ->
     Order = #order{floor=Floor, direction=Direction},
-    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME), %do check if it's on same node
+    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME),
     ClosestDistributer ! {is_order, Order, node(), self()},
     receive
 	{is_order, Order, Response} ->
@@ -40,8 +40,8 @@ is_order(Floor, Direction) ->
     end.
 
 get_orders() -> %function for debug only
-    Pid = pg2:get_closest_pid(?PROCESS_GROUP_NAME),
-    Pid ! {get_orders, self()},
+    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME),
+    ClosestDistributer ! {get_orders, self()},
     receive
 	{orders, Orders} ->
 	    Orders
@@ -71,7 +71,7 @@ start(Listener) ->
 init(Listener) ->
     put(listener, Listener),
     join_process_group(),
-    start_topology_change_detector(),
+    start_network_topology_change_detector(),
     OrderList = get_order_list_from_dets(),
     AddToOrders = fun(Order, Orders) -> 
 			  add_to_orders(Orders, Order, node())
@@ -81,11 +81,11 @@ init(Listener) ->
     lists:foreach(HandleOrders, OrderList),
     loop(Orders).
 
-loop(Orders) -> % OrderMap maps orders to something descriptive
+loop(Orders) ->
     receive
 	upgrade ->
 	    ?MODULE:loop(Orders);
-	{reschedule, OrdersForRescheduling} -> %don't know how smart this realy is
+	{reschedule, OrdersForRescheduling} ->
 	    case OrdersForRescheduling of
 		all ->
 		    OrderList = get_order_list(Orders),
@@ -102,7 +102,7 @@ loop(Orders) -> % OrderMap maps orders to something descriptive
 	    end,
 	    loop(Orders);
 	{request_bid, Floor, Direction, Caller} ->
-	    Price = request_bid(Floor, Direction), % this may cause deadlock if request bid fucks up
+	    Price = request_bid(Floor, Direction),
 	    Caller ! {bid_price, Price, self()},
 	    loop(Orders);						       
 	{is_order, Order, Node, Caller} ->
@@ -144,11 +144,11 @@ schedule_order_async(Order, Timeout) ->
 
 
 % should maybe take order record since it's called reschedule_!order!
-% many io:formats here for debugging, consider removing at the end.
-schedule_order(Floor, Direction, MemberList) when (Direction == up) or (Direction == down) -> % may cause deadlock if members change between calls
+
+schedule_order(Floor, Direction, MemberList) when (Direction == up) or (Direction == down) ->
     io:format("Order auction started on order Floor: ~w, Direction: ~w ~n", [Floor, Direction]),
     io:format("Members are ~w ~n", [MemberList]),
-    Self = self(),
+    Self = self(), % fix
     RequestBidFunction = fun(Member) -> Member ! {request_bid, Floor, Direction, Self} end,
     lists:foreach(RequestBidFunction, MemberList),
     Bids = receive_bids(MemberList),
@@ -193,8 +193,7 @@ add_to_orders(Orders, Order, HandlerNode) when (Order#order.direction == up) or 
 
 
 
-%this is not the nicest construct of a function in the world. Pretty many ifs and cases. !!!!!!Should do this with pattern matching ofcourse!!!!
-remove_from_orders(Orders, Order, HandlerNode) when Order#order.direction == command-> %pretty simuliar construct as is_in_order, possible to do more general?
+remove_from_orders(Orders, Order, HandlerNode) when Order#order.direction == command->
     case dict:is_key(Order, Orders) of
 	true ->
 	    HandlerNodes = dict:fetch(Order, Orders),
@@ -225,11 +224,11 @@ is_in_orders(Orders, Order, HandlerNode) ->
 	    dict:is_key(Order, Orders)
     end.
 
-get_order_list(Orders) -> %not defined which command buttons it will return, please improve
+get_order_list(Orders) -> 
     dict:fetch_keys(Orders).
 	
 %Function(Order, Distributer)
-foreach_order(Orders, Function) -> % this one might be broke, is it defined how many times command orders will be done?
+foreach_order(Orders, Function) ->
     F = fun({Order, Distributer}) -> Function(Order, Distributer) end,
     lists:foreach(F, dict:to_list(Orders)).
      
@@ -237,12 +236,12 @@ foreach_order(Orders, Function) -> % this one might be broke, is it defined how 
 %% Communication/Synchronization procedures
 %%%%%%%%%%%%%%%%%%%
 
-join_process_group() -> % need maybe better name?
+join_process_group() -> 
     pg2:create(?PROCESS_GROUP_NAME),
     pg2:join(?PROCESS_GROUP_NAME, self()).
 
 %F(OrderDistributor)
-foreach_distributer(Function) -> % maybe foreach_member
+foreach_member(Function) ->
     OrderDistributers = pg2:get_members(?PROCESS_GROUP_NAME),
     lists:foreach(Function, OrderDistributers).
 
@@ -257,7 +256,6 @@ add_to_dets(Order) ->
     dets:open_file(?DETS_TABLE_NAME, [{type,bag}]),
     dets:insert(?DETS_TABLE_NAME, Order),
     dets:close(?DETS_TABLE_NAME).
-
 
 remove_from_dets(Order) ->
     dets:open_file(?DETS_TABLE_NAME, [{type,bag}]),
@@ -275,15 +273,15 @@ get_order_list_from_dets() ->
 %% Functions for detecting and managing differance in network topology
 %%%%%%%%%%%%%%%%%%
 
-start_topology_change_detector() ->
+start_network_topology_change_detector() ->
     spawn(fun() -> network_topology_change_detector(pg2:get_members(?PROCESS_GROUP_NAME)) end).
-		  
+
 
 members_added(_MembersAdded) ->
     do_nothing.
 
 members_dissapered(_MembersDissapered) ->
-    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME), %do check if it's on same node
+    ClosestDistributer = pg2:get_closest_pid(?PROCESS_GROUP_NAME),
     ClosestDistributer ! {reschedule, all}.
 
 network_topology_change_detector(OldMembers) ->
