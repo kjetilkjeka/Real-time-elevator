@@ -157,25 +157,27 @@ update_schedule_at_stop(Schedule) when Schedule#schedule.orders == [] ->
     Schedule#schedule{elevator_direction = stop};	
 update_schedule_at_stop(Schedule) when Schedule#schedule.orders /= [] ->
     ElevatorFloor = Schedule#schedule.elevator_next_floor,
-    ScheduleWithoutCommand = remove_order_from_schedule(Schedule, #order{floor = ElevatorFloor, direction = command}),
+    ElevatorDirection = Schedule#schedule.elevator_direction,
     
-    {_OrderCost, CheapestOrder} = get_cheapest_order_with_cost_from_schedule(ScheduleWithoutCommand),
+    {_OrderCost, CheapestOrder} = get_cheapest_order_with_cost_from_schedule(Schedule),
     
-    NewSchedule = if
-		      ElevatorFloor /= CheapestOrder#order.floor ->
-			  ScheduleWithoutCommand;
-		      ElevatorFloor == CheapestOrder#order.floor ->
-			  CheapestDirection = CheapestOrder#order.direction,
-			  ScheduleWithoutCommandAndCheapestDirection = remove_order_from_schedule(ScheduleWithoutCommand, #order{floor = ElevatorFloor, direction = CheapestDirection}),
-			  ScheduleWithoutCommandAndCheapestDirection#schedule{elevator_direction = CheapestDirection}
-		  end,
-    
-    case NewSchedule#schedule.orders of
-	[] ->
-	    NewSchedule#schedule{elevator_direction=stop};
-	_OrderList ->
-	    NewSchedule
+    if
+	CheapestOrder == #order{direction = command, floor = ElevatorFloor} ->
+	    ScheduleWithoutCommand = remove_order_from_schedule(Schedule, #order{floor = ElevatorFloor, direction = command}),
+	    update_schedule_at_stop(ScheduleWithoutCommand);
+	ElevatorFloor /= CheapestOrder#order.floor ->
+	    Schedule;
+	ElevatorFloor == CheapestOrder#order.floor ->
+	    CheapestDirection = CheapestOrder#order.direction,
+	    ScheduleWithoutCheapestDirection = remove_order_from_schedule(Schedule, #order{floor = ElevatorFloor, direction = CheapestDirection}),
+	    if 
+		ScheduleWithoutCheapestDirection#schedule.orders == [] ->
+		    _NewSchedule = ScheduleWithoutCheapestDirection#schedule{elevator_direction=stop};
+		ScheduleWithoutCheapestDirection#schedule.orders /= [] ->
+		    ScheduleWithoutCheapestDirection#schedule{elevator_direction = CheapestDirection}
+	    end
     end.
+	    
 
     
 change_next_floor_in_schedule(Schedule, ElevatorNextFloor) ->
