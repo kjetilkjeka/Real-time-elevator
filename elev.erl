@@ -6,9 +6,9 @@
 start(ElevatorType) ->
     connection_manager:start_auto_discovery(),
     
-    OrderStorageManagerPID = spawn(fun() -> order_storage_manager_init() end),
-    OrderStoragePID = order_storage:start(OrderStorageManagerPID),
-    register(order_storage, OrderStoragePID),
+    OrderDistributerManagerPID = spawn(fun() -> order_distributer_manager_init() end),
+    OrderDistributerPID = order_distributer:start(OrderDistributerManagerPID),
+    register(order_distributer, OrderDistributerPID),
     
     DriverManagerPID = spawn(fun() -> driver_manager_init() end),
     elev_driver:start(DriverManagerPID, ElevatorType),
@@ -28,7 +28,7 @@ start(ElevatorType) ->
     register(plausibilityChecker, PlausibilityCheckerPID),
     
 
-    OrderStorageManagerPID ! init_completed,
+    OrderDistributerManagerPID ! init_completed,
     FsmManagerPID ! init_completed,
     DriverManagerPID ! init_completed,
     ButtonLightManagerPID ! init_completed,
@@ -88,7 +88,7 @@ driver_manager_init() ->
 driver_manager() ->
     receive
 	{new_order, Direction, Floor} ->
-	    order_storage:add_order(Floor, Direction);
+	    order_distributer:add_order(Floor, Direction);
 	{floor_reached, Floor} ->
 	    elev_driver:set_floor_indicator(Floor),
 	    elev_fsm:event_floor_reached(fsm),
@@ -103,7 +103,7 @@ button_light_manager_init() ->
     button_light_manager().
 button_light_manager() ->
     SetLightFunction = fun(Floor, Direction) ->
-			       ButtonState = case order_storage:is_order(Floor, Direction) of
+			       ButtonState = case order_distributer:is_order(Floor, Direction) of
 						 true ->
 						     on;
 						 false ->
@@ -116,12 +116,12 @@ button_light_manager() ->
     timer:sleep(200),
     button_light_manager().
 
-order_storage_manager_init() ->
+order_distributer_manager_init() ->
     receive init_completed ->
 	    ok
     end,
-    order_storage_manager().
-order_storage_manager() ->    
+    order_distributer_manager().
+order_distributer_manager() ->    
     receive
 	{bid_request, Floor, Direction, Caller} ->
 	    Caller ! {bid_price, schedule:get_order_cost(schedule, Floor, Direction)};
@@ -130,7 +130,7 @@ order_storage_manager() ->
 	    elev_fsm:event_new_order(fsm)
     end,
     
-    order_storage_manager().
+    order_distributer_manager().
 
 schedule_manager_init() ->
     receive init_completed ->
@@ -140,6 +140,6 @@ schedule_manager_init() ->
 schedule_manager() ->			    
     receive
 	{order_served, Floor, Direction} ->
-	    order_storage:remove_order(Floor, Direction)
+	    order_distributer:remove_order(Floor, Direction)
     end,
     schedule_manager().

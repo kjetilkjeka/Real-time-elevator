@@ -1,4 +1,4 @@
--module(order_storage). %change to order_distributer or maybe scheduler?, Believe distributer is better than scheduler
+-module(order_distributer).
 -compile(export_all).
 
 -record(order, {floor, direction}).
@@ -7,7 +7,6 @@
 -define(DETS_TABLE_NAME, "orders").
 -define(SCHEDULING_TIMEOUT, 5000).
 
-% this should maybe be done with dict so it can map from order to handler
 
 %% API
 %%%%%%%%%%
