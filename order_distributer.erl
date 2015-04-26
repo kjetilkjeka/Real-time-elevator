@@ -138,7 +138,7 @@ loop(Orders) ->
 schedule_order_async(Order, Timeout) ->
     MemberList = get_member_list(),
     SchedulerPID = spawn(fun() -> 
-				 WinningNode = schedule_order(Order#order.floor, Order#order.direction, MemberList),
+				 WinningNode = schedule_order(Order, MemberList),
 				 AddOrderFunction = fun(Member) -> Member ! {add_order, Order, WinningNode, self()} end,
 				 lists:foreach(AddOrderFunction, MemberList)
 			 end),
@@ -146,13 +146,10 @@ schedule_order_async(Order, Timeout) ->
     SchedulerPID.
 
 
-% should maybe take order record since it's called reschedule_!order!
-
-schedule_order(Floor, Direction, MemberList) when (Direction == up) or (Direction == down) ->
-    io:format("Order auction started on order Floor: ~w, Direction: ~w ~n", [Floor, Direction]),
+schedule_order(Order, MemberList) when (Order#order.direction == up) or (Order#order.direction == down) ->
+    io:format("Order auction started on order Floor: ~w, Direction: ~w ~n", [Order#order.floor, Order#order.direction]),
     io:format("Members are ~w ~n", [MemberList]),
-    Self = self(), % fix
-    RequestBidFunction = fun(Member) -> Member ! {request_bid, Floor, Direction, Self} end,
+    RequestBidFunction = fun(Member) -> Member ! {request_bid, Order#order.floor, Order#order.direction, self()} end,
     lists:foreach(RequestBidFunction, MemberList),
     Bids = receive_bids(MemberList),
     io:format("Bids are ~w ~n", [Bids]),
