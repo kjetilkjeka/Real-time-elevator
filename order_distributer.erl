@@ -13,7 +13,7 @@
 %%%%%%%%%%
 
 add_order(Floor, Direction) when (Direction == up) or (Direction == down) ->
-    schedule_order_async(#order {floor = Floor, direction = Direction}, ?SCHEDULING_TIMEOUT);
+    schedule_order_async(#order{floor = Floor, direction = Direction}, get_member_list(), ?SCHEDULING_TIMEOUT);
 add_order(Floor, Direction) when Direction == command ->
     HandlingNode = node(),
     Self = self(),
@@ -100,7 +100,7 @@ loop(Orders) ->
 					    end
 				    end,
 		    OrderListWithoutCommand = lists:filter(FilterCommand, OrderList),
-		    RescheduleOrder = fun(Order) -> schedule_order_async(Order, ?SCHEDULING_TIMEOUT) end,
+		    RescheduleOrder = fun(Order) -> schedule_order_async(Order, get_member_list(), ?SCHEDULING_TIMEOUT) end,
 		    lists:foreach(RescheduleOrder, OrderListWithoutCommand)
 	    end,
 	    loop(Orders);
@@ -135,8 +135,7 @@ loop(Orders) ->
 %% functions for scheduling order
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-schedule_order_async(Order, Timeout) ->
-    MemberList = get_member_list(),
+schedule_order_async(Order, MemberList, Timeout) ->
     SchedulerPID = spawn(fun() -> 
 				 WinningNode = schedule_order(Order, MemberList),
 				 AddOrderFunction = fun(Member) -> Member ! {add_order, Order, WinningNode, self()} end,
