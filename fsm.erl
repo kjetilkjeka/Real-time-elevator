@@ -4,10 +4,6 @@
 
 %% Module Interface
 %%%%%%%%%%%%%%%%%%%%
-go_direction(Pid, up) -> Pid ! up;
-go_direction(Pid, down) -> Pid ! down;
-go_direction(Pid, open) -> Pid ! open.
-
 event_floor_reached(Pid) -> Pid ! floor_reached.
 event_new_order(Pid) -> Pid ! new_order.
 
