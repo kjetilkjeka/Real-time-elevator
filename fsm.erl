@@ -42,6 +42,7 @@ start(Listener) ->
 
 
 state_init(Listener) ->
+    flush(),
     init_started(Listener),
     receive
 	floor_reached ->
@@ -50,6 +51,7 @@ state_init(Listener) ->
     end.
 
 state_driving_up(Listener) ->
+    flush(),
     motor_up(Listener),
     receive
 	floor_reached ->
@@ -58,6 +60,7 @@ state_driving_up(Listener) ->
 
 
 state_driving_down(Listener) ->
+    flush(),
     motor_down(Listener),
     receive
         floor_reached ->
@@ -66,6 +69,7 @@ state_driving_down(Listener) ->
 
 
 state_idle(Listener) ->
+    flush(),
     motor_stop(Listener),
     NewDirection = request_new_direction(Listener),
     case NewDirection of
@@ -83,8 +87,22 @@ state_idle(Listener) ->
     end.
     
 state_open_doors(Listener) ->
+    flush(),
     open_doors(Listener),
     timer:sleep(3000),
     close_doors(Listener),
     state_idle(Listener).
 
+
+
+%% Helpers
+%%%%%%%%
+
+flush() ->
+    receive _Any ->
+	    flush()
+    after 0 ->
+	    ok
+    end.
+	
+	
