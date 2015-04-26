@@ -128,7 +128,7 @@ loop(Schedule) ->
     end.
 
 
-%% functions for process to call
+%% functions for manipulating schedule
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 serve_orders(NewSchedule, OldSchedule) ->
