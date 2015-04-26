@@ -35,10 +35,8 @@ travel_time_plausibility() ->
 	motor_stopped ->
 	    do_nothing;
 	motor_started ->
-	    io:format("motor_started ~n", []),
 	    receive
 		motor_stopped ->
-		    io:format("motor_stopped ~n", []),
 		    ok
 	    after
 		?MAX_TRAVEL_TIME ->
