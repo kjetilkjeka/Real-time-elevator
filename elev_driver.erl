@@ -1,5 +1,5 @@
 -module(elev_driver).
--export([start/1]).
+-export([start/2, stop/0]).
 -export([init/1, set_motor_direction/1, set_door_open_lamp/1, set_stop_lamp/1, set_floor_indicator/1, set_button_lamp/3, foreach_button/1]).
 
 -define(NUMBER_OF_FLOORS, 4).
@@ -54,7 +54,7 @@ floor_reached(Listener, Floor) -> Listener ! {floor_reached, Floor}.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 start(Listener, ElevatorType) ->
-    spawn(?MODULE, init_port, ["../driver/elev_port", Listener]),
+    spawn(fun() -> init_port("../driver/elev_port", Listener) end),
     timer:sleep(10),
     init(ElevatorType),
     spawn(fun() -> floor_sensor_poller(Listener, -1) end),
@@ -155,8 +155,6 @@ encode({elev_set_button_lamp, command, Floor, off}) -> [10, 2, Floor, 0].
 %%%%%%%%%%%%%%%%%%%%%%    
 
 
-    
-    
 %Function(Floor)
 foreach_floor(Function) -> 
     FloorIterator = fun(FloorIterator, Floor) ->
