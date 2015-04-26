@@ -1,6 +1,5 @@
 -module(elev_fsm).
--compile(export_all).
-%-export([start/0, go_direction/1, event_floor_reached/1]).
+-export([start/1, event_new_order/1, event_floor_reached/1]).
 
 %% Module Interface
 %%%%%%%%%%%%%%%%%%%%
