@@ -1,6 +1,5 @@
 -module(connection_manager).
 -export([start_auto_discovery/0]).
--compile(export_all).
 
 -define(SEND_PORT, 5678).
 -define(RECV_PORT, 5677).
